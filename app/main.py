@@ -77,15 +77,23 @@ def create_evaluation(request: EvaluationRequest) -> EvaluationResponse:
     except (httpx.HTTPError, ValueError) as exc:
         raise HTTPException(status_code=502, detail="Execution service is unavailable or returned invalid data.") from exc
 
-    raw_cases = execution.get("test_results")
-    if not isinstance(raw_cases, list) or len(raw_cases) != len(task.test_cases):
-        raise HTTPException(status_code=502, detail="Execution service returned an invalid test report.")
-    try:
-        feedback = [TestCaseFeedback.model_validate(case) for case in raw_cases]
-    except ValidationError as exc:
-        raise HTTPException(status_code=502, detail="Execution service returned malformed test results.") from exc
     timed_out = bool(execution.get("timed_out", False))
     exit_code = int(execution.get("exit_code", 1))
+    raw_cases = execution.get("test_results")
+    if timed_out or exit_code != 0:
+        # A killed or crashed process may not emit the result marker. Treat every
+        # trusted case as failed rather than turning a valid timeout into HTTP 502.
+        feedback = [
+            TestCaseFeedback(name=case.name, passed=False, expected=case.expected)
+            for case in task.test_cases
+        ]
+    else:
+        if not isinstance(raw_cases, list) or len(raw_cases) != len(task.test_cases):
+            raise HTTPException(status_code=502, detail="Execution service returned an invalid test report.")
+        try:
+            feedback = [TestCaseFeedback.model_validate(case) for case in raw_cases]
+        except ValidationError as exc:
+            raise HTTPException(status_code=502, detail="Execution service returned malformed test results.") from exc
     passed = sum(case.passed for case in feedback) if exit_code == 0 and not timed_out else 0
     total = len(task.test_cases)
     rate = passed / total
