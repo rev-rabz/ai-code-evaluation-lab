@@ -3,8 +3,8 @@
 Revision ID: 0001_stage5_auth
 Revises:
 """
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy import inspect
 
 revision = "0001_stage5_auth"
