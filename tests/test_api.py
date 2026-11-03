@@ -99,6 +99,31 @@ def test_timeout_cannot_receive_passing_score(monkeypatch):
     assert response.json()["passed_tests"] == 0
 
 
+def test_timeout_without_result_marker_returns_zero_score(monkeypatch):
+    class FakeResponse:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"exit_code": 137, "timed_out": True, "duration_ms": 5000,
+                    "stdout": "", "stderr": "", "test_results": []}
+
+    monkeypatch.setenv("RUNNER_URL", "http://runner:8001")
+    monkeypatch.setenv("RUNNER_TOKEN", "secret")
+    monkeypatch.setattr("app.main.httpx.post", lambda *args, **kwargs: FakeResponse())
+    response = client.post("/api/v1/evaluations", json={
+        "language": "python", "source_code": "def add(a, b): while True: pass",
+        "task_id": "python.add", "execute": True,
+    })
+    assert response.status_code == 200
+    body = response.json()
+    assert body["score"] == 0
+    assert body["passed_tests"] == 0
+    assert body["total_tests"] == 5
+    assert body["execution_timed_out"] is True
+    assert all(not case["passed"] for case in body["test_feedback"])
+
+
 def test_invalid_runner_report_is_rejected(monkeypatch):
     class FakeResponse:
         def raise_for_status(self): pass
