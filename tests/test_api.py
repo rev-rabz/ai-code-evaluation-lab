@@ -200,6 +200,7 @@ def test_execution_record_and_detail_are_persisted(monkeypatch):
     assert detail.status_code == 200
     assert detail.json()["source_code"] == "def add(a, b): return a + b"
     assert detail.json()["result"]["score"] == 100
+    assert detail.json()["task_version_id"] is not None
 
 
 def test_history_pagination_limits_are_validated():
