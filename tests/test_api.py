@@ -31,6 +31,8 @@ def test_evaluation_endpoint_returns_structured_result() -> None:
     assert body["score"] == 100
     assert body["execution_performed"] is False
     assert body["execution_requested"] is False
+    assert "untrusted" in body["note"]
+    assert "not executed" not in body["note"]
 
 
 def test_evaluation_endpoint_rejects_unsupported_language() -> None:
@@ -99,3 +101,5 @@ def test_execution_response_is_returned_from_internal_runner(monkeypatch) -> Non
     assert body["execution_performed"] is True
     assert body["execution_exit_code"] == 0
     assert body["stdout"] == "hello\n"
+    assert "untrusted" in body["note"]
+    assert "not executed" not in body["note"]

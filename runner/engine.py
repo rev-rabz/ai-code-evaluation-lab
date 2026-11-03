@@ -1,7 +1,5 @@
 import base64
-import io
 import json
-import tarfile
 import time
 
 import docker
@@ -62,14 +60,22 @@ class DockerExecutionEngine:
                     docker.types.Ulimit(name="core", soft=0, hard=0),
                 ],
                 tmpfs={
-                    "/workspace": "rw,noexec,nosuid,nodev,size=1m",
+                    "/workspace": "rw,noexec,nosuid,nodev,size=1m,uid=65534,gid=65534,mode=0700",
                     "/tmp": "rw,noexec,nosuid,nodev,size=16m,uid=65534,gid=65534,mode=0700",
                     "/output": "rw,noexec,nosuid,nodev,size=2m,uid=65534,gid=65534,mode=0700",
                 },
                 working_dir="/workspace",
+                environment={
+                    "EVAL_SOURCE_B64": base64.b64encode(encoded_source).decode("ascii")
+                },
+                log_config=docker.types.LogConfig(
+                    type="json-file",
+                    config={"max-size": "1m", "max-file": "1"},
+                ),
                 labels={"app": "ai-code-evaluation-lab", "purpose": "untrusted-code"},
             )
-            container.put_archive("/workspace", self._source_archive(encoded_source))
+            # The source is passed through a bounded environment value and
+            # written by the entrypoint into the writable /workspace tmpfs.
             container.start()
             try:
                 result = container.wait(timeout=self.timeout_seconds + 2)
@@ -103,16 +109,6 @@ class DockerExecutionEngine:
             "stdout": stdout,
             "stderr": stderr,
         }
-
-    def _source_archive(self, source: bytes) -> bytes:
-        archive = io.BytesIO()
-        with tarfile.open(fileobj=archive, mode="w") as bundle:
-            info = tarfile.TarInfo("submission.py")
-            info.size = len(source)
-            info.mode = 0o444
-            bundle.addfile(info, io.BytesIO(source))
-        archive.seek(0)
-        return archive.read()
 
     def _read_container_result(self, container: object) -> tuple[str, str]:
         try:

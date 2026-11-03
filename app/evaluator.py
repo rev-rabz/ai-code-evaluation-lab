@@ -99,7 +99,8 @@ def evaluate_submission(request: EvaluationRequest) -> EvaluationResponse:
         findings=findings,
         test_feedback=feedback,
         note=(
-            "Source was parsed but not executed. Test results must be produced by a trusted, "
-            "isolated runner; do not execute untrusted submissions in the API process."
+            "Source was inspected by the API. Client-supplied test results are untrusted and "
+            "must not be used as authoritative scores. Request isolated execution separately; "
+            "execution output alone does not constitute a trusted test result."
         ),
     )
