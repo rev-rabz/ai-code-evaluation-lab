@@ -17,7 +17,7 @@ def test_candidate_entrypoint_receives_only_source_and_one_case_input():
     )
     env = {
         **os.environ,
-        "EVAL_SOURCE_B64": base64.b64encode(source.encode()).decode(),
+        "EVAL_SOURCE_B64": base64.b64encode(json.dumps(source).encode()).decode(),
         "EVAL_ARGS_B64": base64.b64encode(json.dumps([2, 3]).encode()).decode(),
         "EVAL_FUNCTION_NAME": "add",
     }
