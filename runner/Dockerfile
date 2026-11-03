@@ -5,6 +5,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /opt/runner
 RUN python -m pip install --no-cache-dir "docker>=7.1,<8.0" "fastapi>=0.115,<1.0" "uvicorn[standard]>=0.30,<1.0"
+COPY runner/entrypoint.py /opt/runner/entrypoint.py
 COPY runner /opt/runner/runner
 
 EXPOSE 8001
