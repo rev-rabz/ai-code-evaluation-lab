@@ -17,6 +17,7 @@ A Python/FastAPI platform for inspecting code submissions, running trusted tests
 - Alembic schema migrations
 - Per-run timeout, memory, CPU, process, file-size, and output limits
 - Pytest and Ruff checks in GitHub Actions
+- Optional AI-generated code reviews with source-line evidence and user-scoped persistence
 
 ## Stack
 
@@ -148,6 +149,32 @@ Task version test cases are immutable through the API: create a new version to c
 
 See [docs/stage-7-plan.md](docs/stage-7-plan.md) for the milestone plan.
 
+## AI code reviews (Stage 8)
+
+AI review is optional and separate from evaluation. It never changes the trusted test score or executes model-generated code.
+
+Configure `OPENAI_API_KEY` on the API service and optionally set `OPENAI_REVIEW_MODEL` (default: `gpt-5.6-terra`). The API key is separate from a ChatGPT subscription and requires API billing. Keep it in `.env` or a deployment secret store; never commit it.
+
+After creating an evaluation, explicitly request a review:
+
+```http
+POST /api/v1/evaluations/{id}/review
+Authorization: Bearer <access_token>
+```
+
+Retrieve the saved review:
+
+```http
+GET /api/v1/evaluations/{id}/review
+Authorization: Bearer <access_token>
+```
+
+The review includes a summary, strengths, actionable findings, and next steps. Every finding has a 1-based source line range and exact quoted code excerpt; the API rejects findings whose excerpt does not match the stored submission. Repeating the POST returns the existing review rather than making another provider request.
+
+**Data sharing:** calling the POST endpoint sends the stored source code and limited task/evaluation context to OpenAI's Responses API. Ordinary evaluation does not contact the AI provider. The request uses Structured Outputs and `store: false`; no trusted expected test values or execution output are sent. Do not request a review for source code you are not willing to send to the configured provider.
+
+See [docs/stage-8-plan.md](docs/stage-8-plan.md) for scope and trust boundaries.
+
 ## Evaluation history
 
 - `GET /api/v1/evaluations?limit=20&offset=0` — list the authenticated user's records
@@ -212,8 +239,8 @@ ruff check .
 - [x] Persistent evaluation history (PostgreSQL in Compose; SQLite for local development)
 - [x] Authentication, bearer tokens, and per-user evaluation ownership
 - [x] Separate candidate execution from trusted grading data (Stage 6)
-- [ ] Database-backed task management, administrator controls, and immutable trusted test-suite versions (Stage 7 — in progress; see `docs/stage-7-plan.md`)
-- [ ] Optional AI-generated review with evidence-linked findings
+- [x] Database-backed task management, administrator controls, and immutable trusted test-suite versions (Stage 7; see `docs/stage-7-plan.md`)
+- [ ] Optional AI-generated review with evidence-linked findings (Stage 8 — in progress; see `docs/stage-8-plan.md`)
 - [ ] Rate limiting, monitoring, and reviewer dashboard
 - [ ] Stronger execution isolation and independent security review
 
