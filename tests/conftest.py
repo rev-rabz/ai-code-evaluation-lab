@@ -21,10 +21,31 @@ def isolate_database():
     db = TestingSessionLocal()
     test_user = User(id=1, email="owner@example.com", hashed_password=hash_password("Correct-Owner-Password-2026!"))
     db.add(test_user)
-    task = Task(task_id="python.add", title="Add Two Numbers", description="Return the sum of two numbers.", instructions="Define add(a, b).", difficulty="beginner", category="fundamentals", examples=[{"input":"add(2, 3)","output":5}], is_archived=False)
+    task = Task(
+        task_id="python.add",
+        title="Add Two Numbers",
+        description="Return the sum of two numbers.",
+        instructions="Define add(a, b).",
+        difficulty="beginner",
+        category="fundamentals",
+        examples=[{"input": "add(2, 3)", "output": 5}],
+        is_archived=False,
+    )
     db.add(task)
     db.flush()
-    version = TaskVersion(task_id="python.add", version=1, function_name="add", test_cases=[{"name":"positive numbers","args":[2,3],"expected":5},{"name":"negative numbers","args":[-4,-6],"expected":-10},{"name":"zero","args":[0,9],"expected":9},{"name":"mixed signs","args":[-3,8],"expected":5},{"name":"decimal numbers","args":[1.25,2.5],"expected":3.75}], is_published=True)
+    version = TaskVersion(
+        task_id="python.add",
+        version=1,
+        function_name="add",
+        test_cases=[
+            {"name": "positive numbers", "args": [2, 3], "expected": 5},
+            {"name": "negative numbers", "args": [-4, -6], "expected": -10},
+            {"name": "zero", "args": [0, 9], "expected": 9},
+            {"name": "mixed signs", "args": [-3, 8], "expected": 5},
+            {"name": "decimal numbers", "args": [1.25, 2.5], "expected": 3.75},
+        ],
+        is_published=True,
+    )
     db.add(version)
     db.flush()
     task.active_version_id = version.id
