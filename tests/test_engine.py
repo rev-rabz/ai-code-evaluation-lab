@@ -3,7 +3,6 @@ import json
 
 import docker
 import pytest
-import requests
 
 from runner.engine import DockerExecutionEngine, ExecutionError
 
@@ -20,36 +19,39 @@ class FakeContainer:
     def __init__(
         self,
         logs: bytes | None = None,
-        wait_error: Exception | None = None,
         start_error: Exception | None = None,
         exit_code: int = 0,
+        polls_until_exit: int | None = 1,
     ) -> None:
         self.started = False
         self.removed = False
         self.killed = False
-        self.wait_calls = 0
+        self.reload_calls = 0
         self.logs_payload = logs if logs is not None else result_log()
-        self.wait_error = wait_error
         self.start_error = start_error
         self.exit_code = exit_code
+        self.polls_until_exit = polls_until_exit
+        self.attrs = {"State": {"Status": "created", "ExitCode": 0}}
 
     def start(self) -> None:
         if self.start_error:
             raise self.start_error
         self.started = True
+        self.attrs["State"]["Status"] = "running"
+
+    def reload(self) -> None:
+        self.reload_calls += 1
+        if self.polls_until_exit is not None and self.reload_calls >= self.polls_until_exit:
+            self.attrs["State"]["Status"] = "exited"
+            self.attrs["State"]["ExitCode"] = self.exit_code
 
     def wait(self, timeout: int) -> dict[str, int]:
-        self.wait_calls += 1
-        if self.wait_error and self.wait_calls == 1:
-            raise self.wait_error
-        if self.wait_calls == 1:
-            assert timeout == 7
-        else:
-            assert timeout == 2
+        assert timeout == 2
         return {"StatusCode": self.exit_code}
 
     def kill(self) -> None:
         self.killed = True
+        self.attrs["State"]["Status"] = "exited"
 
     def logs(self, stdout: bool, stderr: bool) -> bytes:
         assert stdout is True
@@ -124,14 +126,15 @@ def test_engine_returns_runtime_exception_output_and_exit_code(monkeypatch) -> N
 
 
 def test_engine_kills_timed_out_container_and_cleans_it_up(monkeypatch) -> None:
-    container = FakeContainer(wait_error=requests.exceptions.ReadTimeout("wait expired"))
+    container = FakeContainer(polls_until_exit=None)
     engine, _ = make_engine(monkeypatch, container)
+    engine.timeout_seconds = 0.01
+    engine.poll_interval_seconds = 0.01
 
     result = engine.execute("while True: pass")
 
     assert result["timed_out"] is True
     assert container.killed is True
-    assert container.wait_calls == 2
     assert container.removed is True
 
 
