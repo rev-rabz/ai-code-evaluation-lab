@@ -6,7 +6,7 @@ from pydantic import ValidationError
 
 from app.evaluator import evaluate_submission
 from app.schemas import EvaluationRequest, EvaluationResponse, TestCaseFeedback
-from app.tasks import get_task
+from app.tasks import TASKS, get_task
 
 app = FastAPI(
     title="AI Code Evaluation Lab",
@@ -31,7 +31,7 @@ def health() -> dict[str, str]:
 @app.get("/api/v1/tasks", tags=["evaluations"])
 def list_tasks() -> list[dict[str, str]]:
     return [{"task_id": task.task_id, "function_name": task.function_name,
-             "test_case_count": str(len(task.test_cases))} for task in (get_task(key) for key in sorted(__import__("app.tasks", fromlist=["TASKS"]).TASKS))]
+             "test_case_count": len(task.test_cases)} for task in (get_task(key) for key in sorted(TASKS))]
 
 
 @app.post("/api/v1/evaluations", response_model=EvaluationResponse, tags=["evaluations"])
