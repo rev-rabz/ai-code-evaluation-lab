@@ -3,12 +3,7 @@ import base64
 import io
 import json
 import os
-try:
-    import resource
-except ImportError:  # Windows-based local test environments do not expose resource.
-    resource = None
 import sys
-import traceback
 
 OUTPUT_LIMIT_BYTES = 16_384
 MARKER = "__EVAL_CANDIDATE_RESULT__"
@@ -25,7 +20,7 @@ class BoundedTextWriter:
             raise TypeError("write() argument must be str")
         remaining = self.limit_bytes - self.bytes_written
         if remaining > 0:
-            accepted = value.encode("utf-8")[:remaining].decode("utf-8", errors="ignore")
+            accepted = value[:remaining].encode("utf-8")[:remaining].decode("utf-8", errors="ignore")
             self.stream.write(accepted)
             self.bytes_written += len(accepted.encode("utf-8"))
         return len(value)
@@ -44,14 +39,23 @@ def _decode_env(name: str) -> object:
     return json.loads(base64.b64decode(encoded, validate=True))
 
 
-def _safe_actual(value: object) -> object:
-    try:
-        encoded = json.dumps(value, allow_nan=False)
-        if len(encoded.encode("utf-8")) <= OUTPUT_LIMIT_BYTES:
-            return json.loads(encoded)
-    except (TypeError, ValueError, OverflowError):
-        pass
-    return repr(value)[:OUTPUT_LIMIT_BYTES]
+def _safe_actual(value: object, depth: int = 0) -> object:
+    if value is None or isinstance(value, (bool, int)):
+        return value
+    if isinstance(value, float):
+        return value if value == value and abs(value) != float("inf") else repr(value)
+    if isinstance(value, str):
+        return value[:4_096]
+    if depth >= 5:
+        return f"<{type(value).__name__}>"
+    if isinstance(value, (list, tuple)):
+        return [_safe_actual(item, depth + 1) for item in value[:100]]
+    if isinstance(value, dict):
+        return {
+            str(key)[:256]: _safe_actual(item, depth + 1)
+            for key, item in list(value.items())[:100]
+        }
+    return f"<{type(value).__name__}>"
 
 
 def main() -> int:
@@ -95,10 +99,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    if resource is not None:
-        resource.setrlimit(resource.RLIMIT_CPU, (6, 7))
-        resource.setrlimit(resource.RLIMIT_FSIZE, (1_048_576, 1_048_576))
-        resource.setrlimit(resource.RLIMIT_NPROC, (16, 16))
-        resource.setrlimit(resource.RLIMIT_NOFILE, (64, 64))
-        resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     raise SystemExit(main())
