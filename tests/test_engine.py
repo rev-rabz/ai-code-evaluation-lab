@@ -1,0 +1,82 @@
+import io
+import tarfile
+
+import docker
+import pytest
+
+from runner.engine import DockerExecutionEngine, ExecutionError
+
+
+class FakeContainer:
+    def __init__(self) -> None:
+        self.archive = b""
+        self.started = False
+        self.removed = False
+
+    def put_archive(self, path: str, data: bytes) -> bool:
+        assert path == "/workspace"
+        self.archive = data
+        return True
+
+    def start(self) -> None:
+        self.started = True
+
+    def wait(self, timeout: int) -> dict[str, int]:
+        assert timeout == 7
+        return {"StatusCode": 0}
+
+    def get_archive(self, path: str):
+        filename = path.rsplit("/", 1)[-1]
+        payload = b"hello\n" if filename == "stdout.txt" else b""
+        archive = io.BytesIO()
+        with tarfile.open(fileobj=archive, mode="w") as bundle:
+            info = tarfile.TarInfo(filename)
+            info.size = len(payload)
+            bundle.addfile(info, io.BytesIO(payload))
+        return [archive.getvalue()], {}
+
+    def remove(self, force: bool) -> None:
+        assert force is True
+        self.removed = True
+
+
+class FakeContainers:
+    def __init__(self, container: FakeContainer) -> None:
+        self.container = container
+        self.options = None
+
+    def create(self, image: str, **kwargs):
+        self.options = {"image": image, **kwargs}
+        return self.container
+
+
+class FakeDockerClient:
+    def __init__(self, container: FakeContainer) -> None:
+        self.containers = FakeContainers(container)
+
+
+def test_engine_uses_restricted_container_configuration(monkeypatch) -> None:
+    container = FakeContainer()
+    client = FakeDockerClient(container)
+    monkeypatch.setattr(docker, "from_env", lambda: client)
+
+    result = DockerExecutionEngine().execute("print('hello')")
+
+    options = client.containers.options
+    assert options["network_disabled"] is True
+    assert options["read_only"] is True
+    assert options["user"] == "65534:65534"
+    assert options["cap_drop"] == ["ALL"]
+    assert options["pids_limit"] == 32
+    assert options["mem_limit"] == "128m"
+    assert container.started is True
+    assert container.removed is True
+    assert result["exit_code"] == 0
+    assert result["stdout"] == "hello\n"
+
+
+def test_engine_rejects_source_larger_than_limit() -> None:
+    engine = object.__new__(DockerExecutionEngine)
+
+    with pytest.raises(ExecutionError, match="32 KB"):
+        engine.execute("x" * 32_001)
