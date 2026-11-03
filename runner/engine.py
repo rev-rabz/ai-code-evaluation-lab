@@ -15,6 +15,7 @@ class DockerExecutionEngine:
 
     image = "ai-code-evaluation-python-runner:0.1.0"
     timeout_seconds = 5
+    poll_interval_seconds = 0.1
     output_limit_bytes = 16_384
 
     def __init__(self) -> None:
@@ -74,21 +75,21 @@ class DockerExecutionEngine:
                 ),
                 labels={"app": "ai-code-evaluation-lab", "purpose": "untrusted-code"},
             )
-            # The source is passed through a bounded environment value and
-            # written by the entrypoint into the writable /workspace tmpfs.
+            # Source is written by the non-root entrypoint into writable /workspace tmpfs.
             container.start()
-            try:
-                result = container.wait(timeout=self.timeout_seconds + 2)
-                exit_code = int(result.get("StatusCode", 1))
-            except Exception as exc:
-                if exc.__class__.__name__ not in {"ReadTimeout", "Timeout"}:
-                    raise
-                timed_out = True
-                try:
+            deadline = time.monotonic() + self.timeout_seconds
+            while True:
+                container.reload()
+                state = container.attrs.get("State", {})
+                if state.get("Status") != "running":
+                    exit_code = int(state.get("ExitCode", 1))
+                    break
+                if time.monotonic() >= deadline:
+                    timed_out = True
                     container.kill()
-                except DockerException:
-                    pass
-                container.wait(timeout=2)
+                    container.wait(timeout=2)
+                    break
+                time.sleep(self.poll_interval_seconds)
 
             stdout, stderr = self._read_container_result(container)
         except (DockerException, ImageNotFound) as exc:
