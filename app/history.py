@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict
 class EvaluationHistoryItem(BaseModel):
     id: int
     task_id: str | None
+    task_version_id: int | None = None
     language: str
     status: str
     score: float
