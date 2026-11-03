@@ -4,6 +4,8 @@ from pydantic import BaseModel, Field
 
 
 class TestResult(BaseModel):
+    __test__ = False
+
     name: str = Field(min_length=1, max_length=200)
     passed: bool
     expected: Any | None = None
