@@ -185,7 +185,9 @@ ruff check .
 - [x] Persistent evaluation history (PostgreSQL in Compose; SQLite for local development)
 - [x] Authentication, bearer tokens, and per-user evaluation ownership
 - [ ] Optional AI-generated review with evidence-linked findings
-- [x] Separate candidate execution from trusted grading data (Stage 6)\n- [ ] Rate limiting, monitoring, and reviewer dashboard
+- [x] Separate candidate execution from trusted grading data (Stage 6)
+- [ ] Optional AI-generated review with evidence-linked findings
+- [ ] Rate limiting, monitoring, and reviewer dashboard
 - [ ] Stronger execution isolation and independent security review
 
 ## License
