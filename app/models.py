@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -37,7 +37,7 @@ class Task(Base):
 
 class TaskVersion(Base):
     __tablename__ = "task_versions"
-    __table_args__ = (Index("ix_task_versions_task_version", "task_id", "version", unique=True),)
+    __table_args__ = (UniqueConstraint("task_id", "version", name="uq_task_versions_task_version"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     task_id: Mapped[str] = mapped_column(String(100), ForeignKey("tasks.task_id", ondelete="CASCADE"), nullable=False, index=True)
