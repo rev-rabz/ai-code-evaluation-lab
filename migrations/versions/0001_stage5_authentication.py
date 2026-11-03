@@ -55,6 +55,9 @@ def upgrade() -> None:
     for table, column, index, unique in [
         ("users", "email", "ix_users_email", True),
         ("evaluations", "user_id", "ix_evaluations_user_id", False),
+        ("evaluations", "task_id", "ix_evaluations_task_id", False),
+        ("evaluations", "status", "ix_evaluations_status", False),
+        ("evaluations", "created_at", "ix_evaluations_created_at", False),
     ]:
         existing = {item["name"] for item in inspect(bind).get_indexes(table)}
         if index not in existing:
