@@ -34,9 +34,10 @@ class DockerExecutionEngine:
         function_name: str,
         test_cases: list[dict[str, Any]],
     ) -> dict[str, object]:
-        encoded_source = json.dumps(source_code).encode("utf-8")
-        if not encoded_source or len(encoded_source) > 32_000:
+        source_bytes = source_code.encode("utf-8")
+        if not source_bytes or len(source_bytes) > 32_000:
             raise ExecutionError("Source code must be between 1 byte and 32 KB.")
+        encoded_source = json.dumps(source_code, ensure_ascii=False).encode("utf-8")
         if not test_cases or len(test_cases) > 100:
             raise ExecutionError("A trusted test suite of 1 to 100 cases is required.")
 
