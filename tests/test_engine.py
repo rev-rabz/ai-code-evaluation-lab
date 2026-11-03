@@ -7,33 +7,29 @@ import pytest
 from runner.engine import DockerExecutionEngine, ExecutionError
 
 
-def result_log(stdout=b"ok", stderr=b"", tests=None):
+def result_log(actual=3):
     payload = {
-        "stdout": base64.b64encode(stdout).decode(),
-        "stderr": base64.b64encode(stderr).decode(),
-        "test_results": tests or [],
+        "result": {"ok": True, "actual": actual},
+        "stdout": base64.b64encode(b"ok").decode(),
+        "stderr": "",
     }
-    return ("__EVAL_RESULT__" + json.dumps(payload)).encode()
+    return (DockerExecutionEngine.candidate_marker + json.dumps(payload)).encode()
 
 
 class FakeContainer:
     def __init__(self, logs=None, polls_until_exit=1, exit_code=0, start_error=None):
-        self.logs_payload = logs or result_log(
-            tests=[{"name": "case", "passed": True, "expected": 1, "actual": 1}]
-        )
+        self.logs_payload = logs or result_log()
         self.polls_until_exit = polls_until_exit
         self.exit_code = exit_code
         self.start_error = start_error
         self.attrs = {"State": {"Status": "created", "ExitCode": 0}}
         self.reload_calls = 0
-        self.started = False
         self.removed = False
         self.killed = False
 
     def start(self):
         if self.start_error:
             raise self.start_error
-        self.started = True
         self.attrs["State"]["Status"] = "running"
 
     def reload(self):
@@ -76,7 +72,7 @@ def make_engine(monkeypatch, container):
     return DockerExecutionEngine(), client
 
 
-def test_engine_runs_with_restricted_container_and_includes_trusted_suite(monkeypatch):
+def test_engine_runs_with_restricted_container_and_excludes_trusted_suite(monkeypatch):
     container = FakeContainer()
     engine, client = make_engine(monkeypatch, container)
     result = engine.execute(
@@ -85,17 +81,22 @@ def test_engine_runs_with_restricted_container_and_includes_trusted_suite(monkey
         test_cases=[{"name": "one", "args": [1, 2], "expected": 3}],
     )
     options = client.containers.options
+    environment = options["environment"]
     assert options["network_disabled"] and options["read_only"]
     assert options["user"] == "65534:65534"
-    assert "EVAL_TESTS_B64" in options["environment"]
+    assert set(environment) == {"EVAL_SOURCE_B64", "EVAL_ARGS_B64", "EVAL_FUNCTION_NAME"}
+    assert json.loads(base64.b64decode(environment["EVAL_ARGS_B64"])) == [1, 2]
+    assert "EVAL_TESTS_B64" not in environment
+    assert "expected" not in environment
     assert result["test_results"][0]["passed"] is True
+    assert result["stdout"] == "ok"
     assert container.removed
 
 
 def test_timeout_kills_and_removes_container(monkeypatch):
     container = FakeContainer(polls_until_exit=None)
     engine, _ = make_engine(monkeypatch, container)
-    engine.timeout_seconds = 0.01
+    engine.case_timeout_seconds = 0.01
     engine.poll_interval_seconds = 0.01
     result = engine.execute(
         "while True: pass",
@@ -103,6 +104,7 @@ def test_timeout_kills_and_removes_container(monkeypatch):
         test_cases=[{"name": "one", "args": [1, 2], "expected": 3}],
     )
     assert result["timed_out"] and container.killed and container.removed
+    assert result["test_results"][0]["passed"] is False
 
 
 def test_start_failure_still_removes_container(monkeypatch):
