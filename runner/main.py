@@ -7,7 +7,6 @@ from pydantic import BaseModel, Field
 from runner.engine import DockerExecutionEngine, ExecutionError
 
 app = FastAPI(title="AI Code Evaluation Runner", docs_url=None, redoc_url=None)
-engine = DockerExecutionEngine()
 
 
 class ExecuteRequest(BaseModel):
@@ -38,7 +37,7 @@ def execute(
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     try:
-        result = engine.execute(request.source_code)
+        result = DockerExecutionEngine().execute(request.source_code)
     except ExecutionError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
