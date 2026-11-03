@@ -9,14 +9,8 @@ from runner.engine import DockerExecutionEngine, ExecutionError
 
 class FakeContainer:
     def __init__(self) -> None:
-        self.archive = b""
         self.started = False
         self.removed = False
-
-    def put_archive(self, path: str, data: bytes) -> bool:
-        assert path == "/workspace"
-        self.archive = data
-        return True
 
     def start(self) -> None:
         self.started = True
@@ -29,7 +23,7 @@ class FakeContainer:
         assert stdout is True
         assert stderr is False
         payload = {
-            "stdout": base64.b64encode(b"hello\n").decode("ascii"),
+            "stdout": base64.b64encode(b"hello\\n").decode("ascii"),
             "stderr": base64.b64encode(b"").decode("ascii"),
         }
         return ("__EVAL_RESULT__" + json.dumps(payload)).encode("utf-8")
@@ -69,11 +63,15 @@ def test_engine_uses_restricted_container_configuration(monkeypatch) -> None:
     assert options["cap_drop"] == ["ALL"]
     assert options["pids_limit"] == 32
     assert options["mem_limit"] == "128m"
+    assert options["tmpfs"]["/workspace"].startswith("rw,noexec,nosuid,nodev")
     assert options["tmpfs"]["/output"].startswith("rw,noexec,nosuid,nodev")
+    assert options["environment"]["EVAL_SOURCE_B64"] == base64.b64encode(
+        b"print('hello')"
+    ).decode("ascii")
     assert container.started is True
     assert container.removed is True
     assert result["exit_code"] == 0
-    assert result["stdout"] == "hello\n"
+    assert result["stdout"] == "hello\\n"
 
 
 def test_engine_rejects_source_larger_than_limit() -> None:
