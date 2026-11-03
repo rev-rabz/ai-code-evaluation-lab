@@ -7,6 +7,10 @@ import sys
 import traceback
 from pathlib import Path
 
+from runner.output import BoundedTextWriter
+
+OUTPUT_LIMIT_BYTES = 16_384
+
 resource.setrlimit(resource.RLIMIT_CPU, (4, 5))
 resource.setrlimit(resource.RLIMIT_FSIZE, (1_048_576, 1_048_576))
 resource.setrlimit(resource.RLIMIT_NPROC, (16, 16))
@@ -26,8 +30,8 @@ exit_code = 0
 
 with stdout_path.open("w", encoding="utf-8") as stdout_file:
     with stderr_path.open("w", encoding="utf-8") as stderr_file:
-        sys.stdout = stdout_file
-        sys.stderr = stderr_file
+        sys.stdout = BoundedTextWriter(stdout_file, OUTPUT_LIMIT_BYTES)
+        sys.stderr = BoundedTextWriter(stderr_file, OUTPUT_LIMIT_BYTES)
         try:
             runpy.run_path(str(submission_path), run_name="__main__")
         except SystemExit as exc:
@@ -38,14 +42,17 @@ with stdout_path.open("w", encoding="utf-8") as stdout_file:
             else:
                 exit_code = 1
         except BaseException:
-            traceback.print_exc(file=stderr_file)
+            traceback.print_exc()
             exit_code = 1
+        finally:
+            sys.stdout.flush()
+            sys.stderr.flush()
 
 sys.stdout = sys.__stdout__
 sys.stderr = sys.__stderr__
 result = {
-    "stdout": base64.b64encode(stdout_path.read_bytes()[:16_384]).decode("ascii"),
-    "stderr": base64.b64encode(stderr_path.read_bytes()[:16_384]).decode("ascii"),
+    "stdout": base64.b64encode(stdout_path.read_bytes()).decode("ascii"),
+    "stderr": base64.b64encode(stderr_path.read_bytes()).decode("ascii"),
 }
 print("__EVAL_RESULT__" + json.dumps(result), flush=True)
 sys.exit(exit_code)
