@@ -23,8 +23,13 @@ services:
       RUNNER_URL: http://runner:8001
       RUNNER_TOKEN: ${RUNNER_TOKEN:?Set RUNNER_TOKEN in your environment}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in your environment}
+      AI_REVIEW_PROVIDER: ${AI_REVIEW_PROVIDER:-ollama}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_REVIEW_MODEL: ${OLLAMA_REVIEW_MODEL:-qwen3.5:4b}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_REVIEW_MODEL: ${OPENAI_REVIEW_MODEL:-gpt-5.6-terra}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8000:8000"
     depends_on:

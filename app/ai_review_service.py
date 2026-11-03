@@ -8,8 +8,11 @@ from pydantic import ValidationError
 from app.ai_review_schemas import AIReviewContent
 
 OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
-DEFAULT_REVIEW_MODEL = "gpt-5.6-terra"
-AI_REVIEW_TIMEOUT_SECONDS = 60.0
+DEFAULT_OLLAMA_REVIEW_MODEL = "qwen3.5:4b"
+DEFAULT_OPENAI_REVIEW_MODEL = "gpt-5.6-terra"
+DEFAULT_REVIEW_PROVIDER = "ollama"
+DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434"
+AI_REVIEW_TIMEOUT_SECONDS = 180.0
 MAX_REVIEW_SOURCE_CHARS = 25_000
 
 SYSTEM_INSTRUCTIONS = """You are a careful senior software engineer performing an educational code review.
@@ -87,17 +90,59 @@ class AIReviewOutputError(Exception):
     pass
 
 
-def review_model_name() -> str:
-    return os.getenv("OPENAI_REVIEW_MODEL", DEFAULT_REVIEW_MODEL).strip() or DEFAULT_REVIEW_MODEL
+def review_provider_name() -> str:
+    return os.getenv("AI_REVIEW_PROVIDER", DEFAULT_REVIEW_PROVIDER).strip().lower()
 
 
-def _extract_output_text(payload: dict[str, Any]) -> str:
+def review_model_name(provider: str | None = None) -> str:
+    selected_provider = provider or review_provider_name()
+    if selected_provider == "openai":
+        configured_model = os.getenv("OPENAI_REVIEW_MODEL", DEFAULT_OPENAI_REVIEW_MODEL)
+        return configured_model.strip() or DEFAULT_OPENAI_REVIEW_MODEL
+    configured_model = os.getenv("OLLAMA_REVIEW_MODEL", DEFAULT_OLLAMA_REVIEW_MODEL)
+    return configured_model.strip() or DEFAULT_OLLAMA_REVIEW_MODEL
+
+
+def _post_provider_request(
+    url: str,
+    request_body: dict[str, Any],
+    headers: dict[str, str],
+    provider: str,
+) -> dict[str, Any]:
+    try:
+        response = httpx.post(
+            url,
+            json=request_body,
+            headers=headers,
+            timeout=AI_REVIEW_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        provider_payload = response.json()
+    except httpx.TimeoutException as exc:
+        raise AIReviewProviderError(f"The {provider} review provider timed out.") from exc
+    except httpx.HTTPStatusError as exc:
+        raise AIReviewProviderError(
+            f"The {provider} review provider returned HTTP {exc.response.status_code}."
+        ) from exc
+    except (httpx.HTTPError, ValueError) as exc:
+        raise AIReviewProviderError(
+            f"The {provider} review provider is unavailable or returned an invalid response."
+        ) from exc
+
+    if not isinstance(provider_payload, dict):
+        raise AIReviewProviderError(f"The {provider} review provider returned an invalid response.")
+    if provider_payload.get("error"):
+        raise AIReviewProviderError(f"The {provider} review provider returned an error.")
+    return provider_payload
+
+
+def _extract_openai_output_text(payload: dict[str, Any]) -> str:
     if payload.get("status") != "completed":
-        raise AIReviewProviderError("The AI provider did not complete the review.")
+        raise AIReviewProviderError("The OpenAI provider did not complete the review.")
 
     output_items = payload.get("output")
     if not isinstance(output_items, list):
-        raise AIReviewProviderError("The AI review provider returned an invalid response.")
+        raise AIReviewProviderError("The OpenAI review provider returned an invalid response.")
 
     text_parts: list[str] = []
     for item in output_items:
@@ -110,13 +155,23 @@ def _extract_output_text(payload: dict[str, Any]) -> str:
             if not isinstance(content, dict):
                 continue
             if content.get("type") == "refusal":
-                raise AIReviewProviderError("The AI provider declined to review this submission.")
+                raise AIReviewProviderError("The OpenAI provider declined to review this submission.")
             if content.get("type") == "output_text" and isinstance(content.get("text"), str):
                 text_parts.append(content["text"])
 
     if not text_parts:
-        raise AIReviewProviderError("The AI provider returned no review content.")
+        raise AIReviewProviderError("The OpenAI provider returned no review content.")
     return "".join(text_parts)
+
+
+def _extract_ollama_output_text(payload: dict[str, Any]) -> str:
+    message = payload.get("message")
+    if not isinstance(message, dict):
+        raise AIReviewProviderError("Ollama returned an invalid chat response.")
+    content = message.get("content")
+    if not isinstance(content, str) or not content.strip():
+        raise AIReviewProviderError("Ollama returned no review content.")
+    return content
 
 
 def _validate_evidence(review: AIReviewContent, source_code: str) -> None:
@@ -131,57 +186,68 @@ def _validate_evidence(review: AIReviewContent, source_code: str) -> None:
 
 
 def generate_ai_review(source_code: str, context: dict[str, Any]) -> tuple[AIReviewContent, str]:
-    api_key = os.getenv("OPENAI_API_KEY", "").strip()
-    if not api_key:
-        raise AIReviewNotConfigured("AI code review is not configured. Set OPENAI_API_KEY on the API service.")
+    provider = review_provider_name()
+    model = review_model_name(provider)
+    review_input = json.dumps(
+        {"evaluation_context": context, "submitted_source_code": source_code},
+        ensure_ascii=False,
+    )
 
-    model = review_model_name()
-    request_body = {
-        "model": model,
-        "store": False,
-        "max_output_tokens": 2500,
-        "input": [
-            {"role": "system", "content": SYSTEM_INSTRUCTIONS},
-            {
-                "role": "user",
-                "content": json.dumps(
-                    {"evaluation_context": context, "submitted_source_code": source_code},
-                    ensure_ascii=False,
-                ),
+    if provider == "ollama":
+        base_url = os.getenv("OLLAMA_BASE_URL", DEFAULT_OLLAMA_BASE_URL).strip().rstrip("/")
+        if not base_url:
+            raise AIReviewNotConfigured("Set OLLAMA_BASE_URL to the local Ollama API address.")
+        url = f"{base_url}/api/chat"
+        request_body = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": SYSTEM_INSTRUCTIONS},
+                {"role": "user", "content": review_input},
+            ],
+            "format": REVIEW_JSON_SCHEMA,
+            "stream": False,
+            "options": {"temperature": 0},
+            "keep_alive": "5m",
+        }
+        headers = {"Content-Type": "application/json"}
+        provider_payload = _post_provider_request(url, request_body, headers, "Ollama")
+        output_text = _extract_ollama_output_text(provider_payload)
+    elif provider == "openai":
+        api_key = os.getenv("OPENAI_API_KEY", "").strip()
+        if not api_key:
+            raise AIReviewNotConfigured(
+                "OpenAI reviews are not configured. Set OPENAI_API_KEY or use AI_REVIEW_PROVIDER=ollama."
+            )
+        url = OPENAI_RESPONSES_URL
+        request_body = {
+            "model": model,
+            "store": False,
+            "max_output_tokens": 2500,
+            "input": [
+                {"role": "system", "content": SYSTEM_INSTRUCTIONS},
+                {"role": "user", "content": review_input},
+            ],
+            "text": {
+                "format": {
+                    "type": "json_schema",
+                    "name": "code_review",
+                    "strict": True,
+                    "schema": REVIEW_JSON_SCHEMA,
+                }
             },
-        ],
-        "text": {
-            "format": {
-                "type": "json_schema",
-                "name": "code_review",
-                "strict": True,
-                "schema": REVIEW_JSON_SCHEMA,
-            }
-        },
-    }
-
-    try:
-        response = httpx.post(
-            OPENAI_RESPONSES_URL,
-            json=request_body,
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            timeout=AI_REVIEW_TIMEOUT_SECONDS,
+        }
+        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+        provider_payload = _post_provider_request(url, request_body, headers, "OpenAI")
+        output_text = _extract_openai_output_text(provider_payload)
+    else:
+        raise AIReviewNotConfigured(
+            "Unsupported AI_REVIEW_PROVIDER. Choose 'ollama' or 'openai'."
         )
-        response.raise_for_status()
-        provider_payload = response.json()
-    except httpx.TimeoutException as exc:
-        raise AIReviewProviderError("The AI review provider timed out.") from exc
-    except (httpx.HTTPError, ValueError) as exc:
-        raise AIReviewProviderError("The AI review provider is unavailable or returned an invalid response.") from exc
 
-    if not isinstance(provider_payload, dict):
-        raise AIReviewProviderError("The AI review provider returned an invalid response.")
-
-    output_text = _extract_output_text(provider_payload)
     try:
         review = AIReviewContent.model_validate_json(output_text)
     except ValidationError as exc:
         raise AIReviewOutputError("The AI provider returned a review that did not match the required schema.") from exc
 
     _validate_evidence(review, source_code)
-    return review, model
+    return review, f"{provider}/{model}"

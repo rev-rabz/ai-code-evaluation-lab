@@ -151,9 +151,44 @@ See [docs/stage-7-plan.md](docs/stage-7-plan.md) for the milestone plan.
 
 ## AI code reviews (Stage 8)
 
-AI review is optional and separate from evaluation. It never changes the trusted test score or executes model-generated code.
+AI review is optional and separate from evaluation. It never changes trusted test scores or executes model-generated code.
 
-Configure `OPENAI_API_KEY` on the API service and optionally set `OPENAI_REVIEW_MODEL` (default: `gpt-5.6-terra`). The API key is separate from a ChatGPT subscription and requires API billing. Keep it in `.env` or a deployment secret store; never commit it.
+**The default provider is local Ollama.** This runs the model on your own computer and does not send submitted source code to an external AI API. The first model download requires an internet connection and several GB of disk space; inference then runs locally. The default model is `qwen3.5:4b`.
+
+### Windows + Docker Desktop setup (no API credits)
+
+1. Install Ollama for Windows from [ollama.com/download](https://ollama.com/download).
+2. Open PowerShell on Windows (not inside the API container) and download the model:
+
+   ```powershell
+   ollama pull qwen3.5:4b
+   ollama list
+   ```
+
+3. Ensure the Ollama service is reachable from Docker Desktop. If the API container cannot connect, set the Windows user environment variable `OLLAMA_HOST` to `0.0.0.0:11434`, quit Ollama from the system tray, and reopen it. Ollama's API has no built-in authentication: do not expose port 11434 to the public internet or untrusted networks, and keep Windows Firewall rules restrictive.
+4. Set these values in your project `.env`:
+
+   ```dotenv
+   AI_REVIEW_PROVIDER=ollama
+   OLLAMA_BASE_URL=http://host.docker.internal:11434
+   OLLAMA_REVIEW_MODEL=qwen3.5:4b
+   ```
+
+5. Recreate the API container so it receives the provider settings:
+
+   ```powershell
+   docker compose --env-file .env up -d --force-recreate api
+   ```
+
+6. Confirm Docker can reach Ollama and see the downloaded model:
+
+   ```powershell
+   docker compose exec api python -c "import httpx; r=httpx.get('http://host.docker.internal:11434/api/tags', timeout=10); r.raise_for_status(); print([m['name'] for m in r.json().get('models', [])])"
+   ```
+
+If the connection test fails, check that Ollama is running on Windows, that `OLLAMA_HOST` is configured as above, and that Windows Firewall permits the local Docker-to-host connection only.
+
+### Request and retrieve a review
 
 After creating an evaluation, explicitly request a review:
 
@@ -169,9 +204,20 @@ GET /api/v1/evaluations/{id}/review
 Authorization: Bearer <access_token>
 ```
 
-The review includes a summary, strengths, actionable findings, and next steps. Every finding has a 1-based source line range and exact quoted code excerpt; the API rejects findings whose excerpt does not match the stored submission. Repeating the POST returns the existing review rather than making another provider request.
+The review includes a summary, strengths, actionable findings, and next steps. Every finding has a 1-based source line range and exact quoted code excerpt; the API rejects findings whose excerpt does not match the stored submission. Repeating the POST returns the existing review rather than making another model request.
 
-**Data sharing:** calling the POST endpoint sends the stored source code and limited task/evaluation context to OpenAI's Responses API. Ordinary evaluation does not contact the AI provider. The request uses Structured Outputs and `store: false`; no trusted expected test values or execution output are sent. Do not request a review for source code you are not willing to send to the configured provider.
+### Optional OpenAI provider
+
+OpenAI remains available as an optional alternative. Set `AI_REVIEW_PROVIDER=openai`, `OPENAI_API_KEY`, and optionally `OPENAI_REVIEW_MODEL`. OpenAI API usage is billed separately from a ChatGPT subscription. Keep the key in `.env` or a deployment secret store; never commit it. The application sends source code to OpenAI only when a user explicitly requests a review with this provider selected.
+
+### Privacy and trust boundaries
+
+- With Ollama, submitted source and limited evaluation context are sent from the API container to the Ollama service running on your own machine. They are not sent to an external model API. Downloading model files requires internet access.
+- With OpenAI, submitted source code is sent to the Responses API only after an authenticated user explicitly requests a review. The request uses `store: false`.
+- Expected test values, actual execution output, stdout, and stderr are not sent to either provider.
+- Submitted source is treated as untrusted prompt data. No tools are exposed to the model and no generated code is executed.
+- Every finding must cite source lines and an exact excerpt; the API validates the citation against the saved source.
+- Review output is advisory and never changes trusted scores or test outcomes.
 
 See [docs/stage-8-plan.md](docs/stage-8-plan.md) for scope and trust boundaries.
 
@@ -240,7 +286,7 @@ ruff check .
 - [x] Authentication, bearer tokens, and per-user evaluation ownership
 - [x] Separate candidate execution from trusted grading data (Stage 6)
 - [x] Database-backed task management, administrator controls, and immutable trusted test-suite versions (Stage 7; see `docs/stage-7-plan.md`)
-- [ ] Optional AI-generated review with evidence-linked findings (Stage 8 — in progress; see `docs/stage-8-plan.md`)
+- [ ] Optional AI-generated review with evidence-linked findings (Stage 8 — Ollama local provider and optional OpenAI provider implemented; awaiting local integration verification and review)
 - [ ] Rate limiting, monitoring, and reviewer dashboard
 - [ ] Stronger execution isolation and independent security review
 
