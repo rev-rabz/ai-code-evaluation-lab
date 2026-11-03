@@ -95,11 +95,18 @@ def _extract_output_text(payload: dict[str, Any]) -> str:
     if payload.get("status") != "completed":
         raise AIReviewProviderError("The AI provider did not complete the review.")
 
+    output_items = payload.get("output")
+    if not isinstance(output_items, list):
+        raise AIReviewProviderError("The AI review provider returned an invalid response.")
+
     text_parts: list[str] = []
-    for item in payload.get("output", []):
+    for item in output_items:
         if not isinstance(item, dict) or item.get("type") != "message":
             continue
-        for content in item.get("content", []):
+        content_items = item.get("content")
+        if not isinstance(content_items, list):
+            continue
+        for content in content_items:
             if not isinstance(content, dict):
                 continue
             if content.get("type") == "refusal":
@@ -132,6 +139,7 @@ def generate_ai_review(source_code: str, context: dict[str, Any]) -> tuple[AIRev
     request_body = {
         "model": model,
         "store": False,
+        "max_output_tokens": 2500,
         "input": [
             {"role": "system", "content": SYSTEM_INSTRUCTIONS},
             {
