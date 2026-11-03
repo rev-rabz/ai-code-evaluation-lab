@@ -54,7 +54,7 @@ class DockerExecutionEngine:
                 nano_cpus=500_000_000,
                 pids_limit=32,
                 ulimits=[
-                    docker.types.Ulimit(name="cpu", soft=4, hard=5),
+                    docker.types.Ulimit(name="cpu", soft=6, hard=7),
                     docker.types.Ulimit(name="fsize", soft=1_048_576, hard=1_048_576),
                     docker.types.Ulimit(name="nproc", soft=16, hard=16),
                     docker.types.Ulimit(name="nofile", soft=64, hard=64),
