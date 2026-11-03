@@ -82,3 +82,18 @@ class EvaluationRecord(Base):
         nullable=False,
         index=True,
     )
+
+
+class AIReview(Base):
+    __tablename__ = "ai_reviews"
+    __table_args__ = (UniqueConstraint("evaluation_id", name="uq_ai_reviews_evaluation_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    evaluation_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("evaluations.id", ondelete="CASCADE"), nullable=False
+    )
+    model: Mapped[str] = mapped_column(String(120), nullable=False)
+    review_json: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
