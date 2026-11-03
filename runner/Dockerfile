@@ -4,9 +4,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
 WORKDIR /opt/runner
-COPY runner/entrypoint.py /opt/runner/entrypoint.py
+RUN python -m pip install --no-cache-dir "docker>=7.1,<8.0" "fastapi>=0.115,<1.0" "uvicorn[standard]>=0.30,<1.0"
+COPY runner /opt/runner/runner
 
-RUN useradd --uid 65534 --no-create-home --shell /usr/sbin/nologin runner
-
-USER 65534:65534
-ENTRYPOINT ["/usr/local/bin/python", "-I", "-S", "/opt/runner/entrypoint.py"]
+EXPOSE 8001
+CMD ["uvicorn", "runner.main:app", "--host", "0.0.0.0", "--port", "8001"]
