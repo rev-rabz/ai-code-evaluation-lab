@@ -7,7 +7,9 @@ import sys
 import traceback
 from pathlib import Path
 
-from runner.output import BoundedTextWriter
+# -I excludes the script directory; add only the trusted runner directory.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from output import BoundedTextWriter
 
 OUTPUT_LIMIT_BYTES = 16_384
 
