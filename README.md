@@ -185,6 +185,7 @@ ruff check .
 - [x] Persistent evaluation history (PostgreSQL in Compose; SQLite for local development)
 - [x] Authentication, bearer tokens, and per-user evaluation ownership
 - [x] Separate candidate execution from trusted grading data (Stage 6)
+- [ ] Database-backed task management, administrator controls, and immutable trusted test-suite versions (Stage 7 — in progress; see `docs/stage-7-plan.md`)
 - [ ] Optional AI-generated review with evidence-linked findings
 - [ ] Rate limiting, monitoring, and reviewer dashboard
 - [ ] Stronger execution isolation and independent security review
