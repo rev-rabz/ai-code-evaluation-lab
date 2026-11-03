@@ -1,8 +1,6 @@
 import io
 import tarfile
-import tempfile
 import time
-from pathlib import Path
 
 import docker
 from docker.errors import DockerException, ImageNotFound
@@ -26,87 +24,93 @@ class DockerExecutionEngine:
             raise ExecutionError("Docker daemon is unavailable.") from exc
 
     def execute(self, source_code: str) -> dict[str, object]:
-        if not source_code or len(source_code.encode("utf-8")) > 32_000:
+        encoded_source = source_code.encode("utf-8")
+        if not encoded_source or len(encoded_source) > 32_000:
             raise ExecutionError("Source code must be between 1 byte and 32 KB.")
 
         started = time.monotonic()
-        with tempfile.TemporaryDirectory(prefix="code-eval-") as temporary:
-            source_dir = Path(temporary) / "source"
-            source_dir.mkdir(mode=0o700)
-            (source_dir / "submission.py").write_text(source_code, encoding="utf-8")
-
-            container = None
-            timed_out = False
-            exit_code = 1
-            stdout = ""
-            stderr = ""
+        container = None
+        timed_out = False
+        exit_code = 1
+        stdout = ""
+        stderr = ""
+        try:
+            container = self.client.containers.create(
+                self.image,
+                command=[
+                    "/usr/local/bin/python",
+                    "-I",
+                    "-S",
+                    "/opt/runner/entrypoint.py",
+                ],
+                user="65534:65534",
+                read_only=True,
+                network_disabled=True,
+                cap_drop=["ALL"],
+                security_opt=["no-new-privileges:true"],
+                mem_limit="128m",
+                nano_cpus=500_000_000,
+                pids_limit=32,
+                ulimits=[
+                    docker.types.Ulimit(name="cpu", soft=4, hard=5),
+                    docker.types.Ulimit(name="fsize", soft=1_048_576, hard=1_048_576),
+                    docker.types.Ulimit(name="nproc", soft=16, hard=16),
+                    docker.types.Ulimit(name="nofile", soft=64, hard=64),
+                    docker.types.Ulimit(name="core", soft=0, hard=0),
+                ],
+                tmpfs={
+                    "/workspace": "rw,noexec,nosuid,nodev,size=1m",
+                    "/tmp": "rw,noexec,nosuid,nodev,size=16m",
+                    "/output": "rw,noexec,nosuid,nodev,size=2m",
+                },
+                working_dir="/workspace",
+                labels={"app": "ai-code-evaluation-lab", "purpose": "untrusted-code"},
+            )
+            container.put_archive("/workspace", self._source_archive(encoded_source))
+            container.start()
             try:
-                container = self.client.containers.run(
-                    self.image,
-                    command=[
-                        "/usr/local/bin/python",
-                        "-I",
-                        "-S",
-                        "/opt/runner/entrypoint.py",
-                    ],
-                    detach=True,
-                    auto_remove=False,
-                    user="65534:65534",
-                    read_only=True,
-                    network_disabled=True,
-                    cap_drop=["ALL"],
-                    security_opt=["no-new-privileges:true"],
-                    mem_limit="128m",
-                    nano_cpus=500_000_000,
-                    pids_limit=32,
-                    ulimits=[
-                        docker.types.Ulimit(name="cpu", soft=4, hard=5),
-                        docker.types.Ulimit(name="fsize", soft=1_048_576, hard=1_048_576),
-                        docker.types.Ulimit(name="nproc", soft=16, hard=16),
-                        docker.types.Ulimit(name="nofile", soft=64, hard=64),
-                        docker.types.Ulimit(name="core", soft=0, hard=0),
-                    ],
-                    tmpfs={
-                        "/tmp": "rw,noexec,nosuid,nodev,size=16m",
-                        "/output": "rw,noexec,nosuid,nodev,size=2m",
-                    },
-                    volumes={str(source_dir): {"bind": "/workspace", "mode": "ro"}},
-                    working_dir="/workspace",
-                    labels={"app": "ai-code-evaluation-lab", "purpose": "untrusted-code"},
-                )
+                result = container.wait(timeout=self.timeout_seconds + 2)
+                exit_code = int(result.get("StatusCode", 1))
+            except Exception as exc:
+                if exc.__class__.__name__ not in {"ReadTimeout", "Timeout"}:
+                    raise
+                timed_out = True
                 try:
-                    result = container.wait(timeout=self.timeout_seconds + 2)
-                    exit_code = int(result.get("StatusCode", 1))
-                except Exception as exc:
-                    if exc.__class__.__name__ not in {"ReadTimeout", "Timeout"}:
-                        raise
-                    timed_out = True
-                    try:
-                        container.kill()
-                    except DockerException:
-                        pass
-                    container.wait(timeout=2)
+                    container.kill()
+                except DockerException:
+                    pass
+                container.wait(timeout=2)
 
-                stdout = self._read_container_file(container, "/output/stdout.txt")
-                stderr = self._read_container_file(container, "/output/stderr.txt")
-            except (DockerException, ImageNotFound) as exc:
-                raise ExecutionError(
-                    "Runner image is missing or Docker could not start the sandbox."
-                ) from exc
-            finally:
-                if container is not None:
-                    try:
-                        container.remove(force=True)
-                    except DockerException:
-                        pass
+            stdout = self._read_container_file(container, "/output/stdout.txt")
+            stderr = self._read_container_file(container, "/output/stderr.txt")
+        except (DockerException, ImageNotFound) as exc:
+            raise ExecutionError(
+                "Runner image is missing or Docker could not start the sandbox."
+            ) from exc
+        finally:
+            if container is not None:
+                try:
+                    container.remove(force=True)
+                except DockerException:
+                    pass
 
-            return {
-                "exit_code": exit_code,
-                "timed_out": timed_out,
-                "duration_ms": round((time.monotonic() - started) * 1000, 2),
-                "stdout": stdout,
-                "stderr": stderr,
-            }
+        return {
+            "exit_code": exit_code,
+            "timed_out": timed_out,
+            "duration_ms": round((time.monotonic() - started) * 1000, 2),
+            "stdout": stdout,
+            "stderr": stderr,
+        }
+
+    def _source_archive(self, source: bytes) -> bytes:
+        archive = io.BytesIO()
+        with tarfile.open(fileobj=archive, mode="w") as bundle:
+            info = tarfile.TarInfo("submission.py")
+            info.size = len(source)
+            info.mode = 0o400
+            bundle.addfile(info, io.BytesIO(source))
+        archive.seek(0)
+        return archive.read()
 
     def _read_container_file(self, container: object, path: str) -> str:
         try:
