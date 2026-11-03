@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 
 
 class TestResult(BaseModel):
+    """Legacy client-submitted result shape; never used for scoring."""
     __test__ = False
 
     name: str = Field(min_length=1, max_length=200)
@@ -16,6 +17,7 @@ class TestResult(BaseModel):
 class EvaluationRequest(BaseModel):
     language: Literal["python"]
     source_code: str = Field(min_length=1, max_length=100_000)
+    task_id: str | None = Field(default=None, min_length=1, max_length=100)
     required_functions: list[str] = Field(default_factory=list, max_length=100)
     test_results: list[TestResult] = Field(default_factory=list, max_length=500)
     execute: bool = False
@@ -45,6 +47,7 @@ class EvaluationResponse(BaseModel):
     pass_rate: float
     findings: list[Finding]
     test_feedback: list[TestCaseFeedback]
+    task_id: str | None = None
     execution_requested: bool = False
     execution_performed: bool = False
     execution_exit_code: int | None = None
