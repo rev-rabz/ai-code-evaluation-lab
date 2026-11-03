@@ -10,7 +10,7 @@ from pathlib import Path
 
 # -I excludes the script directory; add only the trusted runner directory.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-BoundedTextWriter = importlib.import_module("output").BoundedTextWriter
+BoundedTextWriter = importlib.import_module("runner.output").BoundedTextWriter
 
 OUTPUT_LIMIT_BYTES = 16_384
 
