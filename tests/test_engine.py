@@ -101,7 +101,7 @@ def test_engine_uses_restricted_container_configuration(monkeypatch) -> None:
     assert options["environment"]["EVAL_SOURCE_B64"] == base64.b64encode(
         b"print('hello')"
     ).decode("ascii")
-    assert options["log_config"].config == {"max-size": "1m", "max-file": "1"}
+    assert options["log_config"]["Config"] == {"max-size": "1m", "max-file": "1"}
     assert container.started is True
     assert container.removed is True
     assert result["exit_code"] == 0
