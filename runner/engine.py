@@ -73,7 +73,11 @@ class DockerExecutionEngine:
 
             candidate = case_result["result"]
             if candidate is None or not candidate.get("ok"):
-                actual = candidate.get("error", "Candidate process returned no valid result.") if candidate else "Candidate process returned no valid result."
+                actual = (
+                    candidate.get("error", "Candidate process returned no valid result.")
+                    if candidate
+                    else "Candidate process returned no valid result."
+                )
                 passed = False
             else:
                 actual = candidate.get("actual")
