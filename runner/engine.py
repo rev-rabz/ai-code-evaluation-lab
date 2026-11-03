@@ -38,6 +38,8 @@ class DockerExecutionEngine:
             container = None
             timed_out = False
             exit_code = 1
+            stdout = ""
+            stderr = ""
             try:
                 container = self.client.containers.run(
                     self.image,
@@ -79,8 +81,14 @@ class DockerExecutionEngine:
                     if exc.__class__.__name__ not in {"ReadTimeout", "Timeout"}:
                         raise
                     timed_out = True
-                    container.kill()
+                    try:
+                        container.kill()
+                    except DockerException:
+                        pass
                     container.wait(timeout=2)
+
+                stdout = self._read_container_file(container, "/output/stdout.txt")
+                stderr = self._read_container_file(container, "/output/stderr.txt")
             except (DockerException, ImageNotFound) as exc:
                 raise ExecutionError(
                     "Runner image is missing or Docker could not start the sandbox."
@@ -92,8 +100,6 @@ class DockerExecutionEngine:
                     except DockerException:
                         pass
 
-            stdout = self._read_container_file(container, "/output/stdout.txt")
-            stderr = self._read_container_file(container, "/output/stderr.txt")
             return {
                 "exit_code": exit_code,
                 "timed_out": timed_out,
@@ -103,8 +109,6 @@ class DockerExecutionEngine:
             }
 
     def _read_container_file(self, container: object, path: str) -> str:
-        if container is None:
-            return ""
         try:
             archive, _ = container.get_archive(path)
             content = b"".join(archive)
