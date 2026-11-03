@@ -11,7 +11,7 @@ class ExecutionError(RuntimeError):
 
 
 class DockerExecutionEngine:
-    """Run one Python submission in a disposable, restricted container."""
+    """Run one Python submission and trusted task tests in a disposable container."""
 
     image = "ai-code-evaluation-python-runner:0.1.0"
     timeout_seconds = 5
@@ -24,35 +24,33 @@ class DockerExecutionEngine:
         except DockerException as exc:
             raise ExecutionError("Docker daemon is unavailable.") from exc
 
-    def execute(self, source_code: str) -> dict[str, object]:
+    def execute(
+        self,
+        source_code: str,
+        *,
+        function_name: str,
+        test_cases: list[dict[str, object]],
+    ) -> dict[str, object]:
         encoded_source = source_code.encode("utf-8")
         if not encoded_source or len(encoded_source) > 32_000:
             raise ExecutionError("Source code must be between 1 byte and 32 KB.")
+        if not test_cases or len(test_cases) > 100:
+            raise ExecutionError("A trusted test suite of 1 to 100 cases is required.")
 
+        test_spec = json.dumps({"function_name": function_name, "test_cases": test_cases})
         started = time.monotonic()
         container = None
         timed_out = False
         exit_code = 1
-        stdout = ""
-        stderr = ""
+        stdout = stderr = ""
+        test_results: list[dict[str, object]] = []
         try:
             container = self.client.containers.create(
                 self.image,
-                command=[
-                    "/usr/local/bin/python",
-                    "-I",
-                    "-S",
-                    "/opt/runner/entrypoint.py",
-                ],
-                user="65534:65534",
-                tty=True,
-                read_only=True,
-                network_disabled=True,
-                cap_drop=["ALL"],
-                security_opt=["no-new-privileges:true"],
-                mem_limit="128m",
-                nano_cpus=500_000_000,
-                pids_limit=32,
+                command=["/usr/local/bin/python", "-I", "-S", "/opt/runner/entrypoint.py"],
+                user="65534:65534", tty=True, read_only=True, network_disabled=True,
+                cap_drop=["ALL"], security_opt=["no-new-privileges:true"],
+                mem_limit="128m", nano_cpus=500_000_000, pids_limit=32,
                 ulimits=[
                     docker.types.Ulimit(name="cpu", soft=6, hard=7),
                     docker.types.Ulimit(name="fsize", soft=1_048_576, hard=1_048_576),
@@ -67,15 +65,14 @@ class DockerExecutionEngine:
                 },
                 working_dir="/workspace",
                 environment={
-                    "EVAL_SOURCE_B64": base64.b64encode(encoded_source).decode("ascii")
+                    "EVAL_SOURCE_B64": base64.b64encode(encoded_source).decode("ascii"),
+                    "EVAL_TESTS_B64": base64.b64encode(test_spec.encode("utf-8")).decode("ascii"),
                 },
                 log_config=docker.types.LogConfig(
-                    type="json-file",
-                    config={"max-size": "1m", "max-file": "1"},
+                    type="json-file", config={"max-size": "1m", "max-file": "1"}
                 ),
                 labels={"app": "ai-code-evaluation-lab", "purpose": "untrusted-code"},
             )
-            # Source is written by the non-root entrypoint into writable /workspace tmpfs.
             container.start()
             deadline = time.monotonic() + self.timeout_seconds
             while True:
@@ -90,45 +87,44 @@ class DockerExecutionEngine:
                     container.wait(timeout=2)
                     break
                 time.sleep(self.poll_interval_seconds)
-
-            stdout, stderr = self._read_container_result(container)
+            stdout, stderr, test_results = self._read_container_result(container)
         except (DockerException, ImageNotFound) as exc:
-            raise ExecutionError(
-                "Runner image is missing or Docker could not start the sandbox."
-            ) from exc
+            raise ExecutionError("Runner image is missing or Docker could not start the sandbox.") from exc
         finally:
             if container is not None:
                 try:
                     container.remove(force=True)
                 except DockerException:
                     pass
-
         return {
-            "exit_code": exit_code,
-            "timed_out": timed_out,
+            "exit_code": exit_code, "timed_out": timed_out,
             "duration_ms": round((time.monotonic() - started) * 1000, 2),
-            "stdout": stdout,
-            "stderr": stderr,
+            "stdout": stdout, "stderr": stderr, "test_results": test_results,
         }
 
-    def _read_container_result(self, container: object) -> tuple[str, str]:
+    def _read_container_result(
+        self, container: object
+    ) -> tuple[str, str, list[dict[str, object]]]:
         try:
             logs = container.logs(stdout=True, stderr=False).decode("utf-8", errors="replace")
         except (DockerException, AttributeError):
-            return "", ""
-
+            return "", "", []
         marker = "__EVAL_RESULT__"
         for line in reversed(logs.splitlines()):
             if not line.startswith(marker):
                 continue
             try:
-                result = json.loads(line[len(marker) :])
+                result = json.loads(line[len(marker):])
                 stdout = base64.b64decode(result["stdout"], validate=True)
                 stderr = base64.b64decode(result["stderr"], validate=True)
+                cases = result.get("test_results", [])
+                if not isinstance(cases, list):
+                    cases = []
                 return (
-                    stdout[: self.output_limit_bytes].decode("utf-8", errors="replace"),
-                    stderr[: self.output_limit_bytes].decode("utf-8", errors="replace"),
+                    stdout[:self.output_limit_bytes].decode("utf-8", errors="replace"),
+                    stderr[:self.output_limit_bytes].decode("utf-8", errors="replace"),
+                    cases,
                 )
             except (KeyError, ValueError, TypeError, json.JSONDecodeError):
-                return "", ""
-        return "", ""
+                return "", "", []
+        return "", "", []

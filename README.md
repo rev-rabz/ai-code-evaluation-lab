@@ -8,7 +8,8 @@ A Python/FastAPI platform for inspecting code submissions and optionally running
 
 - FastAPI endpoint for Python submissions
 - Python syntax validation and basic static analysis
-- Test-result aggregation and structured feedback
+- Server-owned Python task catalogue and trusted test feedback
+- Server-calculated scores from tests executed in the isolated runner
 - Optional isolated Python execution through a separate runner service
 - Per-run timeout, memory, CPU, process, file-size, and output limits
 - Pytest and Ruff checks in GitHub Actions
@@ -64,7 +65,7 @@ Send a POST request to `/api/v1/evaluations`:
 }
 ```
 
-The response includes `execution_performed`, `execution_exit_code`, `execution_timed_out`, `execution_duration_ms`, `stdout`, and `stderr`.
+The response includes `execution_performed`, `execution_exit_code`, `execution_timed_out`, `execution_duration_ms`, `stdout`, `stderr`, trusted test feedback, and a score calculated by the API. For scoring, include a registered `task_id` such as `python.add`. List available tasks with `GET /api/v1/tasks`.
 
 Set `execute` to false (the default) to perform static inspection only.
 
@@ -91,7 +92,7 @@ This is a development-stage isolation layer, **not a claim of perfect or product
 
 For higher-risk multi-tenant workloads, use a stronger isolation boundary such as dedicated ephemeral VMs or a purpose-built sandbox runtime, add host-level monitoring and quotas, and perform an independent security review before accepting arbitrary public submissions.
 
-The current test-result fields are client-supplied input for API demonstration only. They are **not trusted evidence** and must not be used to award real evaluation scores until test cases are executed and attested by a trusted isolated test harness.
+The legacy `test_results` request field is retained temporarily for compatibility, but is ignored for scoring. Only server-registered test cases are sent to the private runner. The API validates the runner's test report and calculates the score itself. The first registered task is `python.add`, with five fixed test cases. The test harness currently invokes the submitted function in the same Python process as the harness inside the disposable container; determined submissions may attempt introspection or tampering. Treat this as a learning-stage implementation, not cheat-proof grading. Strengthen the boundary by moving trusted tests outside the submission process (or using a dedicated test protocol/VM) before high-stakes use.
 
 ## API
 
@@ -111,7 +112,7 @@ ruff check .
 
 - [x] API skeleton, schemas, syntax checks, and initial CI
 - [x] Separate runner service and disposable restricted execution containers
-- [ ] Execute trusted test cases inside the isolated runner and derive scores server-side
+- [x] Execute registered trusted test cases in the isolated runner and derive scores server-side
 - [ ] Persistent evaluation history (PostgreSQL)
 - [ ] Optional AI-generated review with evidence-linked findings
 - [ ] Authentication, rate limiting, monitoring, and reviewer dashboard
