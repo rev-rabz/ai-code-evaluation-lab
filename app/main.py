@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import ACCESS_TOKEN_MINUTES, create_access_token, get_current_user, hash_password, verify_password
 from app.auth_schemas import LoginRequest, RegisterRequest, TokenResponse, UserResponse
-from app.database import Base, engine, get_db
+from app.database import get_db
 from app.evaluator import evaluate_submission
 from app.history import EvaluationHistoryDetail, EvaluationHistoryItem
 from app.models import EvaluationRecord, User
@@ -24,12 +24,6 @@ app = FastAPI(
 
 EXECUTION_OUTPUT_LIMIT_BYTES = 16_384
 RUNNER_REQUEST_TIMEOUT_SECONDS = 15.0
-
-
-@app.on_event("startup")
-def initialize_database() -> None:
-    """Create missing tables for local development; schema changes use Alembic migrations."""
-    Base.metadata.create_all(bind=engine)
 
 
 def _truncate_utf8(value: str, limit_bytes: int = EXECUTION_OUTPUT_LIMIT_BYTES) -> str:
