@@ -3,6 +3,7 @@ import json
 import resource
 import runpy
 import sys
+import time
 import traceback
 from pathlib import Path
 
@@ -11,6 +12,13 @@ resource.setrlimit(resource.RLIMIT_FSIZE, (1_048_576, 1_048_576))
 resource.setrlimit(resource.RLIMIT_NPROC, (16, 16))
 resource.setrlimit(resource.RLIMIT_NOFILE, (64, 64))
 resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+
+submission_path = Path("/workspace/submission.py")
+submission_deadline = time.monotonic() + 5
+while not submission_path.exists():
+    if time.monotonic() >= submission_deadline:
+        raise FileNotFoundError("Submission was not provided in time.")
+    time.sleep(0.05)
 
 output = Path("/output")
 stdout_path = output / "stdout.txt"
@@ -22,7 +30,7 @@ with stdout_path.open("w", encoding="utf-8") as stdout_file:
         sys.stdout = stdout_file
         sys.stderr = stderr_file
         try:
-            runpy.run_path("/workspace/submission.py", run_name="__main__")
+            runpy.run_path(str(submission_path), run_name="__main__")
         except SystemExit as exc:
             if exc.code is None:
                 exit_code = 0
