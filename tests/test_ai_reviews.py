@@ -8,7 +8,7 @@ from app.main import app
 client = TestClient(app)
 
 
-def _create_evaluation(source_code: str = "def add(a, b):\\n    return a - b") -> int:
+def _create_evaluation(source_code: str = "def add(a, b):\n    return a - b") -> int:
     response = client.post(
         "/api/v1/evaluations",
         json={"language": "python", "source_code": source_code},
