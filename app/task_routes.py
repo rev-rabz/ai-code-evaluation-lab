@@ -93,6 +93,23 @@ def update_task_metadata(
     return task_payload(task, get_active_version(db, task))
 
 
+@router.get("/api/v1/admin/tasks/{task_id}/versions")
+def list_task_versions(
+    task_id: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+) -> list[dict]:
+    if db.get(Task, task_id) is None:
+        raise HTTPException(status_code=404, detail="Task not found.")
+    versions = db.scalars(
+        select(TaskVersion).where(TaskVersion.task_id == task_id).order_by(TaskVersion.version.desc())
+    ).all()
+    return [
+        {**version_payload(version), "test_cases": version.test_cases}
+        for version in versions
+    ]
+
+
 @router.post("/api/v1/admin/tasks/{task_id}/versions", status_code=status.HTTP_201_CREATED)
 def create_task_version(
     task_id: str,
