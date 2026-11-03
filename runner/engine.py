@@ -60,8 +60,8 @@ class DockerExecutionEngine:
                 ],
                 tmpfs={
                     "/workspace": "rw,noexec,nosuid,nodev,size=1m",
-                    "/tmp": "rw,noexec,nosuid,nodev,size=16m",
-                    "/output": "rw,noexec,nosuid,nodev,size=2m",
+                    "/tmp": "rw,noexec,nosuid,nodev,size=16m,uid=65534,gid=65534,mode=0700",
+                    "/output": "rw,noexec,nosuid,nodev,size=2m,uid=65534,gid=65534,mode=0700",
                 },
                 working_dir="/workspace",
                 labels={"app": "ai-code-evaluation-lab", "purpose": "untrusted-code"},
@@ -107,7 +107,7 @@ class DockerExecutionEngine:
         with tarfile.open(fileobj=archive, mode="w") as bundle:
             info = tarfile.TarInfo("submission.py")
             info.size = len(source)
-            info.mode = 0o400
+            info.mode = 0o444
             bundle.addfile(info, io.BytesIO(source))
         archive.seek(0)
         return archive.read()
