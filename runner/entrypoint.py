@@ -1,9 +1,9 @@
 import base64
 import json
+import os
 import resource
 import runpy
 import sys
-import time
 import traceback
 from pathlib import Path
 
@@ -14,11 +14,10 @@ resource.setrlimit(resource.RLIMIT_NOFILE, (64, 64))
 resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
 
 submission_path = Path("/workspace/submission.py")
-submission_deadline = time.monotonic() + 5
-while not submission_path.exists():
-    if time.monotonic() >= submission_deadline:
-        raise FileNotFoundError("Submission was not provided in time.")
-    time.sleep(0.05)
+source_b64 = os.environ.pop("EVAL_SOURCE_B64", "")
+if not source_b64:
+    raise RuntimeError("Submission source was not provided.")
+submission_path.write_bytes(base64.b64decode(source_b64, validate=True))
 
 output = Path("/output")
 stdout_path = output / "stdout.txt"
