@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 
+from app.auth import get_current_user
 from app.main import app
 
 client = TestClient(app)
@@ -46,7 +47,9 @@ def test_unknown_task_is_rejected():
 
 def test_execution_scores_server_owned_results(monkeypatch):
     class FakeResponse:
-        def raise_for_status(self): pass
+        def raise_for_status(self):
+            pass
+
         def json(self):
             return {
                 "exit_code": 0, "timed_out": False, "duration_ms": 25,
@@ -81,12 +84,17 @@ def test_execution_scores_server_owned_results(monkeypatch):
 
 def test_timeout_cannot_receive_passing_score(monkeypatch):
     class FakeResponse:
-        def raise_for_status(self): pass
+        def raise_for_status(self):
+            pass
+
         def json(self):
-            return {"exit_code": 137, "timed_out": True, "duration_ms": 5000,
-                    "stdout": "", "stderr": "", "test_results": [
-                        {"name": f"case {i}", "passed": True, "expected": 1, "actual": 1}
-                        for i in range(5)]}
+            return {
+                "exit_code": 137, "timed_out": True, "duration_ms": 5000,
+                "stdout": "", "stderr": "", "test_results": [
+                    {"name": f"case {i}", "passed": True, "expected": 1, "actual": 1}
+                    for i in range(5)],
+            }
+
     monkeypatch.setenv("RUNNER_URL", "http://runner:8001")
     monkeypatch.setenv("RUNNER_TOKEN", "secret")
     monkeypatch.setattr("app.main.httpx.post", lambda *args, **kwargs: FakeResponse())
@@ -105,8 +113,10 @@ def test_timeout_without_result_marker_returns_zero_score(monkeypatch):
             pass
 
         def json(self):
-            return {"exit_code": 137, "timed_out": True, "duration_ms": 5000,
-                    "stdout": "", "stderr": "", "test_results": []}
+            return {
+                "exit_code": 137, "timed_out": True, "duration_ms": 5000,
+                "stdout": "", "stderr": "", "test_results": [],
+            }
 
     monkeypatch.setenv("RUNNER_URL", "http://runner:8001")
     monkeypatch.setenv("RUNNER_TOKEN", "secret")
@@ -126,8 +136,12 @@ def test_timeout_without_result_marker_returns_zero_score(monkeypatch):
 
 def test_invalid_runner_report_is_rejected(monkeypatch):
     class FakeResponse:
-        def raise_for_status(self): pass
-        def json(self): return {"exit_code": 0, "timed_out": False, "test_results": []}
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"exit_code": 0, "timed_out": False, "test_results": []}
+
     monkeypatch.setenv("RUNNER_URL", "http://runner:8001")
     monkeypatch.setenv("RUNNER_TOKEN", "secret")
     monkeypatch.setattr("app.main.httpx.post", lambda *args, **kwargs: FakeResponse())
@@ -193,3 +207,77 @@ def test_history_pagination_limits_are_validated():
 def test_missing_evaluation_history_returns_404():
     response = client.get("/api/v1/evaluations/99999")
     assert response.status_code == 404
+
+
+def test_registration_login_and_current_user(monkeypatch):
+    monkeypatch.setenv("JWT_SECRET", "test-jwt-secret-that-is-long-enough")
+    response = client.post("/api/v1/auth/register", json={
+        "email": "NewUser@example.com", "password": "Correct-Horse-2026!",
+    })
+    assert response.status_code == 201
+    assert response.json()["email"] == "newuser@example.com"
+    assert "hashed_password" not in response.json()
+
+    duplicate = client.post("/api/v1/auth/register", json={
+        "email": "newuser@example.com", "password": "Correct-Horse-2026!",
+    })
+    assert duplicate.status_code == 409
+
+    login = client.post("/api/v1/auth/login", json={
+        "email": "NEWUSER@example.com", "password": "Correct-Horse-2026!",
+    })
+    assert login.status_code == 200
+    token = login.json()["access_token"]
+    assert login.json()["token_type"] == "bearer"
+    assert login.json()["expires_in"] == 1800
+
+    app.dependency_overrides.pop(get_current_user)
+    me = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert me.status_code == 200
+    assert me.json()["email"] == "newuser@example.com"
+
+
+def test_login_rejects_wrong_password():
+    response = client.post("/api/v1/auth/login", json={
+        "email": "owner@example.com", "password": "incorrect-password",
+    })
+    assert response.status_code == 401
+
+
+def test_weak_password_is_rejected():
+    response = client.post("/api/v1/auth/register", json={
+        "email": "weak@example.com", "password": "short",
+    })
+    assert response.status_code == 422
+
+
+def test_evaluation_endpoint_requires_authentication():
+    app.dependency_overrides.pop(get_current_user)
+    response = client.post("/api/v1/evaluations", json={
+        "language": "python", "source_code": "def add(a, b): return a + b",
+    })
+    assert response.status_code == 401
+
+
+def test_evaluation_history_is_private_to_each_user(monkeypatch):
+    monkeypatch.setenv("JWT_SECRET", "test-jwt-secret-that-is-long-enough")
+    first = client.post("/api/v1/evaluations", json={
+        "language": "python", "source_code": "def add(a, b): return a + b",
+    })
+    evaluation_id = first.json()["id"] if "id" in first.json() else None
+    assert first.status_code == 200
+    first_history = client.get("/api/v1/evaluations")
+    assert len(first_history.json()) == 1
+    evaluation_id = first_history.json()[0]["id"]
+
+    app.dependency_overrides.pop(get_current_user)
+    client.post("/api/v1/auth/register", json={
+        "email": "second@example.com", "password": "Another-Strong-Password-2026!",
+    })
+    login = client.post("/api/v1/auth/login", json={
+        "email": "second@example.com", "password": "Another-Strong-Password-2026!",
+    })
+    token = login.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+    assert client.get("/api/v1/evaluations", headers=headers).json() == []
+    assert client.get(f"/api/v1/evaluations/{evaluation_id}", headers=headers).status_code == 404
