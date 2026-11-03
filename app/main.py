@@ -8,7 +8,7 @@ from app.schemas import EvaluationRequest, EvaluationResponse
 
 app = FastAPI(
     title="AI Code Evaluation Lab",
-    description="Inspect Python submissions and optionally execute them through an isolated runner.",
+    description=(\n        "Inspect Python submissions and optionally execute them through an isolated runner."\n    ),
     version="0.2.0",
 )
 
