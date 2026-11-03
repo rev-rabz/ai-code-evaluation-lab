@@ -2,16 +2,16 @@ import os
 
 import httpx
 from fastapi import FastAPI, HTTPException
+from pydantic import ValidationError
 
 from app.evaluator import evaluate_submission
-from app.schemas import EvaluationRequest, EvaluationResponse
+from app.schemas import EvaluationRequest, EvaluationResponse, TestCaseFeedback
+from app.tasks import get_task
 
 app = FastAPI(
     title="AI Code Evaluation Lab",
-    description=(
-        "Inspect Python submissions and optionally execute them through an isolated runner."
-    ),
-    version="0.2.0",
+    description="Inspect Python submissions and evaluate them against server-owned tests in an isolated runner.",
+    version="0.3.0",
 )
 
 EXECUTION_OUTPUT_LIMIT_BYTES = 16_384
@@ -19,11 +19,8 @@ RUNNER_REQUEST_TIMEOUT_SECONDS = 15.0
 
 
 def _truncate_utf8(value: str, limit_bytes: int = EXECUTION_OUTPUT_LIMIT_BYTES) -> str:
-    """Keep execution output within a byte limit without returning broken UTF-8."""
     encoded = value.encode("utf-8")
-    if len(encoded) <= limit_bytes:
-        return value
-    return encoded[:limit_bytes].decode("utf-8", errors="ignore")
+    return value if len(encoded) <= limit_bytes else encoded[:limit_bytes].decode("utf-8", errors="ignore")
 
 
 @app.get("/health", tags=["system"])
@@ -31,54 +28,78 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.post(
-    "/api/v1/evaluations",
-    response_model=EvaluationResponse,
-    tags=["evaluations"],
-)
+@app.get("/api/v1/tasks", tags=["evaluations"])
+def list_tasks() -> list[dict[str, str]]:
+    return [{"task_id": task.task_id, "function_name": task.function_name,
+             "test_case_count": str(len(task.test_cases))} for task in (get_task(key) for key in sorted(__import__("app.tasks", fromlist=["TASKS"]).TASKS))]
+
+
+@app.post("/api/v1/evaluations", response_model=EvaluationResponse, tags=["evaluations"])
 def create_evaluation(request: EvaluationRequest) -> EvaluationResponse:
     result = evaluate_submission(request)
     result.execution_requested = request.execute
-
     if not request.execute:
         return result
+    if not request.task_id:
+        raise HTTPException(status_code=422, detail="task_id is required when execute is true.")
+    try:
+        task = get_task(request.task_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if not result.syntax_valid:
+        result.task_id = task.task_id
+        result.total_tests = len(task.test_cases)
+        result.test_feedback = [TestCaseFeedback(name=case.name, passed=False, expected=case.expected)
+                                for case in task.test_cases]
+        result.note = "Submission has a syntax error; trusted tests were not run and the score is zero."
+        return result
 
-    runner_url = os.getenv("RUNNER_URL")
-    runner_token = os.getenv("RUNNER_TOKEN")
+    runner_url, runner_token = os.getenv("RUNNER_URL"), os.getenv("RUNNER_TOKEN")
     if not runner_url or not runner_token:
-        raise HTTPException(
-            status_code=503,
-            detail="Code execution is not configured. Set RUNNER_URL and RUNNER_TOKEN.",
-        )
-
+        raise HTTPException(status_code=503, detail="Code execution is not configured.")
+    payload = {
+        "source_code": request.source_code,
+        "function_name": task.function_name,
+        "test_cases": [{"name": c.name, "args": c.args, "expected": c.expected} for c in task.test_cases],
+    }
     try:
         response = httpx.post(
-            f"{runner_url.rstrip('/')}/internal/execute",
-            json={"source_code": request.source_code},
+            f"{runner_url.rstrip('/')}/internal/execute", json=payload,
             headers={"Authorization": f"Bearer {runner_token}"},
             timeout=RUNNER_REQUEST_TIMEOUT_SECONDS,
         )
         response.raise_for_status()
+        execution = response.json()
     except httpx.TimeoutException as exc:
         raise HTTPException(status_code=504, detail="Execution service timed out.") from exc
     except httpx.HTTPStatusError as exc:
-        raise HTTPException(
-            status_code=502,
-            detail="Execution service rejected or failed the request.",
-        ) from exc
-    except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail="Execution service is unavailable.") from exc
+        raise HTTPException(status_code=502, detail="Execution service rejected or failed the request.") from exc
+    except (httpx.HTTPError, ValueError) as exc:
+        raise HTTPException(status_code=502, detail="Execution service is unavailable or returned invalid data.") from exc
 
-    execution = response.json()
+    raw_cases = execution.get("test_results")
+    if not isinstance(raw_cases, list) or len(raw_cases) != len(task.test_cases):
+        raise HTTPException(status_code=502, detail="Execution service returned an invalid test report.")
+    try:
+        feedback = [TestCaseFeedback.model_validate(case) for case in raw_cases]
+    except ValidationError as exc:
+        raise HTTPException(status_code=502, detail="Execution service returned malformed test results.") from exc
+    timed_out = bool(execution.get("timed_out", False))
+    exit_code = int(execution.get("exit_code", 1))
+    passed = sum(case.passed for case in feedback) if exit_code == 0 and not timed_out else 0
+    total = len(task.test_cases)
+    rate = passed / total
+    result.task_id = task.task_id
     result.execution_performed = True
-    result.execution_exit_code = execution["exit_code"]
-    result.execution_timed_out = execution["timed_out"]
-    result.execution_duration_ms = execution["duration_ms"]
-    result.stdout = _truncate_utf8(execution["stdout"])
-    result.stderr = _truncate_utf8(execution["stderr"])
-    result.note = (
-        "Source was inspected by the API and execution was performed by the isolated runner. "
-        "Client-supplied test results remain untrusted and must not be used as authoritative "
-        "scores; execution output alone does not constitute a trusted test result."
-    )
+    result.execution_exit_code = exit_code
+    result.execution_timed_out = timed_out
+    result.execution_duration_ms = float(execution.get("duration_ms", 0))
+    result.stdout = _truncate_utf8(str(execution.get("stdout", "")))
+    result.stderr = _truncate_utf8(str(execution.get("stderr", "")))
+    result.test_feedback = feedback
+    result.passed_tests = passed
+    result.total_tests = total
+    result.pass_rate = round(rate, 4)
+    result.score = round(rate * 100, 2)
+    result.note = "Score calculated by the API from the registered task test suite. Legacy client-supplied test_results are ignored."
     return result
