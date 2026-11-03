@@ -91,20 +91,34 @@ def upgrade() -> None:
         """).bindparams(sa.bindparam("test_cases", type_=sa.JSON())), {
             "task_id": "python.add",
             "function_name": "add",
-            "test_cases": [{"name":"positive numbers","args":[2,3],"expected":5},{"name":"negative numbers","args":[-4,-6],"expected":-10},{"name":"zero","args":[0,9],"expected":9},{"name":"mixed signs","args":[-3,8],"expected":5},{"name":"decimal numbers","args":[1.25,2.5],"expected":3.75}],
+            "test_cases": [
+                {"name": "positive numbers", "args": [2, 3], "expected": 5},
+                {"name": "negative numbers", "args": [-4, -6], "expected": -10},
+                {"name": "zero", "args": [0, 9], "expected": 9},
+                {"name": "mixed signs", "args": [-3, 8], "expected": 5},
+                {"name": "decimal numbers", "args": [1.25, 2.5], "expected": 3.75},
+            ],
             "created_at": now,
         })
         version_id = result.lastrowid
         if version_id is None:
-            version_id = bind.execute(sa.text("SELECT id FROM task_versions WHERE task_id = :task_id AND version = 1"), {"task_id": "python.add"}).scalar_one()
-        bind.execute(sa.text("UPDATE tasks SET active_version_id = :version_id WHERE task_id = :task_id"),
-                     {"version_id": version_id, "task_id": "python.add"})
+            version_id = bind.execute(
+                sa.text("SELECT id FROM task_versions WHERE task_id = :task_id AND version = 1"),
+                {"task_id": "python.add"},
+            ).scalar_one()
+        bind.execute(
+            sa.text("UPDATE tasks SET active_version_id = :version_id WHERE task_id = :task_id"),
+            {"version_id": version_id, "task_id": "python.add"},
+        )
 
 
 def downgrade() -> None:
     bind = op.get_bind()
     inspector = inspect(bind)
-    if inspector.has_table("evaluations") and "task_version_id" in {c["name"] for c in inspector.get_columns("evaluations")}:
+    if (
+        inspector.has_table("evaluations")
+        and "task_version_id" in {c["name"] for c in inspector.get_columns("evaluations")}
+    ):
         with op.batch_alter_table("evaluations") as batch:
             batch.drop_column("task_version_id")
     if inspector.has_table("task_versions"):
