@@ -83,7 +83,7 @@ Each execution gets a new container with:
 - 16 MiB `/tmp` and 2 MiB output tmpfs, both no-exec
 - 1 MiB per-file size limit, bounded response output, and forced container cleanup
 
-The submitted source is mounted read-only. Standard output and standard error are written to a size-limited tmpfs and read back after execution.
+The submitted source is passed to the disposable container through a bounded environment value, then written by the non-root entrypoint into the writable, no-exec `/workspace` tmpfs. Standard output and standard error are written to a size-limited tmpfs and read back after execution.
 
 ## Important security limitations
 
