@@ -68,12 +68,14 @@ class DockerExecutionEngine:
                 environment={
                     "EVAL_SOURCE_B64": base64.b64encode(encoded_source).decode("ascii")
                 },
+                log_config=docker.types.LogConfig(
+                    type="json-file",
+                    config={"max-size": "1m", "max-file": "1"},
+                ),
                 labels={"app": "ai-code-evaluation-lab", "purpose": "untrusted-code"},
             )
-            # Docker's archive API rejects writes when the container rootfs is
-            # read-only, even when the target is a writable tmpfs mount. Pass
-            # the bounded source through the environment; entrypoint.py writes
-            # it into the writable /workspace tmpfs.
+            # The source is passed through a bounded environment value and
+            # written by the entrypoint into the writable /workspace tmpfs.
             container.start()
             try:
                 result = container.wait(timeout=self.timeout_seconds + 2)
