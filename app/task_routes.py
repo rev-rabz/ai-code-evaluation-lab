@@ -1,6 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
@@ -53,7 +52,7 @@ def list_admin_tasks(
 def create_task(
     request: TaskCreate,
     db: Session = Depends(get_db),
-    admin: User = Depends(require_admin),
+    _: User = Depends(require_admin),
 ) -> dict:
     if db.get(Task, request.task_id):
         raise HTTPException(status_code=409, detail="A task with this task_id already exists.")
