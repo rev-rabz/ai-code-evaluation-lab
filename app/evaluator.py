@@ -29,7 +29,9 @@ def evaluate_submission(request: EvaluationRequest) -> EvaluationResponse:
 
     if tree is not None:
         defined_functions = {
-            node.name for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            node.name
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
         }
         for function_name in request.required_functions:
             if function_name not in defined_functions:
@@ -74,7 +76,7 @@ def evaluate_submission(request: EvaluationRequest) -> EvaluationResponse:
     has_errors = any(finding.severity == "error" for finding in findings)
     score = round(pass_rate * 100, 2) if total_tests else 0.0
     if not syntax_valid or has_errors:
-        score = min(score, 0.0)
+        score = 0.0
 
     feedback = [
         TestCaseFeedback(
