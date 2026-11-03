@@ -136,3 +136,60 @@ def test_invalid_runner_report_is_rejected(monkeypatch):
         "task_id": "python.add", "execute": True,
     })
     assert response.status_code == 502
+
+
+def test_static_evaluation_is_saved_to_history():
+    response = client.post("/api/v1/evaluations", json={
+        "language": "python", "source_code": "def add(a, b): return a + b",
+    })
+    assert response.status_code == 200
+    history = client.get("/api/v1/evaluations")
+    assert history.status_code == 200
+    records = history.json()
+    assert len(records) == 1
+    assert records[0]["score"] == 0
+    assert records[0]["execution_performed"] is False
+    assert records[0]["task_id"] is None
+
+
+def test_execution_record_and_detail_are_persisted(monkeypatch):
+    class FakeResponse:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {
+                "exit_code": 0, "timed_out": False, "duration_ms": 12,
+                "stdout": "", "stderr": "",
+                "test_results": [
+                    {"name": f"case {i}", "passed": True, "expected": 5, "actual": 5}
+                    for i in range(5)
+                ],
+            }
+
+    monkeypatch.setenv("RUNNER_URL", "http://runner:8001")
+    monkeypatch.setenv("RUNNER_TOKEN", "secret")
+    monkeypatch.setattr("app.main.httpx.post", lambda *args, **kwargs: FakeResponse())
+    response = client.post("/api/v1/evaluations", json={
+        "language": "python", "source_code": "def add(a, b): return a + b",
+        "task_id": "python.add", "execute": True,
+    })
+    assert response.status_code == 200
+    history = client.get("/api/v1/evaluations?task_id=python.add")
+    assert history.status_code == 200
+    assert len(history.json()) == 1
+    evaluation_id = history.json()[0]["id"]
+    detail = client.get(f"/api/v1/evaluations/{evaluation_id}")
+    assert detail.status_code == 200
+    assert detail.json()["source_code"] == "def add(a, b): return a + b"
+    assert detail.json()["result"]["score"] == 100
+
+
+def test_history_pagination_limits_are_validated():
+    assert client.get("/api/v1/evaluations?limit=101").status_code == 422
+    assert client.get("/api/v1/evaluations?offset=-1").status_code == 422
+
+
+def test_missing_evaluation_history_returns_404():
+    response = client.get("/api/v1/evaluations/99999")
+    assert response.status_code == 404

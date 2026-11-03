@@ -1,6 +1,6 @@
 # AI Code Evaluation Lab
 
-A Python/FastAPI platform for inspecting code submissions and optionally running Python code in a disposable, restricted Docker container.
+A Python/FastAPI platform for inspecting code submissions, running trusted tests in disposable Docker containers, and retaining evaluation history in a database.
 
 > **Execution status:** The API never evaluates submitted code inside its own process. When execution is requested, it forwards source to a separate internal runner service. The runner launches a fresh container with no network, a read-only root filesystem, a non-root user, dropped Linux capabilities, resource limits, and automatic cleanup.
 
@@ -10,6 +10,8 @@ A Python/FastAPI platform for inspecting code submissions and optionally running
 - Python syntax validation and basic static analysis
 - Server-owned Python task catalogue and trusted test feedback
 - Server-calculated scores from tests executed in the isolated runner
+- Persistent evaluation history backed by PostgreSQL in Docker Compose (SQLite for local development)
+- Paginated and task-filtered evaluation history, with individual result details
 - Optional isolated Python execution through a separate runner service
 - Per-run timeout, memory, CPU, process, file-size, and output limits
 - Pytest and Ruff checks in GitHub Actions
@@ -51,7 +53,7 @@ Requirements: Docker Engine with Compose v2. The runner requires access to the h
    docker compose --env-file .env up --build
    ```
 
-The API is exposed on port 8000. The runner is not published to the host; it is reachable only on the Compose network and requires the shared bearer token.
+The API is exposed on port 8000. PostgreSQL stores evaluation history in a named Docker volume. The runner is not published to the host; it is reachable only on the Compose network and requires the shared bearer token.
 
 ## Execute a submission
 
@@ -113,7 +115,7 @@ ruff check .
 - [x] API skeleton, schemas, syntax checks, and initial CI
 - [x] Separate runner service and disposable restricted execution containers
 - [x] Execute registered trusted test cases in the isolated runner and derive scores server-side
-- [ ] Persistent evaluation history (PostgreSQL)
+- [x] Persistent evaluation history (PostgreSQL in Compose; SQLite for local development)
 - [ ] Optional AI-generated review with evidence-linked findings
 - [ ] Authentication, rate limiting, monitoring, and reviewer dashboard
 
