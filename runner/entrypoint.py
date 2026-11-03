@@ -1,5 +1,6 @@
 import base64
 import json
+import importlib
 import os
 import resource
 import runpy
@@ -8,8 +9,8 @@ import traceback
 from pathlib import Path
 
 # -I excludes the script directory; add only the trusted runner directory.
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from output import BoundedTextWriter
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+BoundedTextWriter = importlib.import_module("output").BoundedTextWriter
 
 OUTPUT_LIMIT_BYTES = 16_384
 
