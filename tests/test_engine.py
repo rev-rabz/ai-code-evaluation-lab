@@ -1,5 +1,5 @@
-import io
-import tarfile
+import base64
+import json
 
 import docker
 import pytest
@@ -25,15 +25,14 @@ class FakeContainer:
         assert timeout == 7
         return {"StatusCode": 0}
 
-    def get_archive(self, path: str):
-        filename = path.rsplit("/", 1)[-1]
-        payload = b"hello\n" if filename == "stdout.txt" else b""
-        archive = io.BytesIO()
-        with tarfile.open(fileobj=archive, mode="w") as bundle:
-            info = tarfile.TarInfo(filename)
-            info.size = len(payload)
-            bundle.addfile(info, io.BytesIO(payload))
-        return [archive.getvalue()], {}
+    def logs(self, stdout: bool, stderr: bool) -> bytes:
+        assert stdout is True
+        assert stderr is False
+        payload = {
+            "stdout": base64.b64encode(b"hello\n").decode("ascii"),
+            "stderr": base64.b64encode(b"").decode("ascii"),
+        }
+        return ("__EVAL_RESULT__" + json.dumps(payload)).encode("utf-8")
 
     def remove(self, force: bool) -> None:
         assert force is True
@@ -66,9 +65,11 @@ def test_engine_uses_restricted_container_configuration(monkeypatch) -> None:
     assert options["network_disabled"] is True
     assert options["read_only"] is True
     assert options["user"] == "65534:65534"
+    assert options["tty"] is True
     assert options["cap_drop"] == ["ALL"]
     assert options["pids_limit"] == 32
     assert options["mem_limit"] == "128m"
+    assert options["tmpfs"]["/output"].startswith("rw,noexec,nosuid,nodev")
     assert container.started is True
     assert container.removed is True
     assert result["exit_code"] == 0
