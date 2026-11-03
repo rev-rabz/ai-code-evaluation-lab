@@ -74,24 +74,24 @@ def upgrade() -> None:
             VALUES
             (:task_id, :title, :description, :instructions, :difficulty, :category, :examples,
              NULL, FALSE, :created_at, :updated_at)
-        """), {
+        """).bindparams(sa.bindparam("examples", type_=sa.JSON())), {
             "task_id": "python.add",
             "title": "Add Two Numbers",
             "description": "Implement a function that returns the sum of two numbers.",
             "instructions": "Define add(a, b) and return the arithmetic sum of a and b.",
             "difficulty": "beginner",
             "category": "fundamentals",
-            "examples": '[{"input":"add(2, 3)","output":5}]',
+            "examples": [{"input": "add(2, 3)", "output": 5}],
             "created_at": now,
             "updated_at": now,
         })
         result = bind.execute(sa.text("""
             INSERT INTO task_versions (task_id, version, function_name, test_cases, is_published, created_at)
             VALUES (:task_id, 1, :function_name, :test_cases, TRUE, :created_at)
-        """), {
+        """).bindparams(sa.bindparam("test_cases", type_=sa.JSON())), {
             "task_id": "python.add",
             "function_name": "add",
-            "test_cases": '[{"name":"positive numbers","args":[2,3],"expected":5},{"name":"negative numbers","args":[-4,-6],"expected":-10},{"name":"zero","args":[0,9],"expected":9},{"name":"mixed signs","args":[-3,8],"expected":5},{"name":"decimal numbers","args":[1.25,2.5],"expected":3.75}]',
+            "test_cases": [{"name":"positive numbers","args":[2,3],"expected":5},{"name":"negative numbers","args":[-4,-6],"expected":-10},{"name":"zero","args":[0,9],"expected":9},{"name":"mixed signs","args":[-3,8],"expected":5},{"name":"decimal numbers","args":[1.25,2.5],"expected":3.75}],
             "created_at": now,
         })
         version_id = result.lastrowid
