@@ -14,8 +14,8 @@ from app.evaluator import evaluate_submission
 from app.history import EvaluationHistoryDetail, EvaluationHistoryItem
 from app.models import EvaluationRecord, User
 from app.task_routes import router as task_router
-from app.task_service import get_published_task
 from app.schemas import EvaluationRequest, EvaluationResponse, TestCaseFeedback
+from app.task_service import get_published_task
 
 app = FastAPI(
     title="AI Code Evaluation Lab",
