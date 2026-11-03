@@ -14,7 +14,7 @@ BoundedTextWriter = importlib.import_module("runner.output").BoundedTextWriter
 
 OUTPUT_LIMIT_BYTES = 16_384
 
-resource.setrlimit(resource.RLIMIT_CPU, (4, 5))
+resource.setrlimit(resource.RLIMIT_CPU, (6, 7))
 resource.setrlimit(resource.RLIMIT_FSIZE, (1_048_576, 1_048_576))
 resource.setrlimit(resource.RLIMIT_NPROC, (16, 16))
 resource.setrlimit(resource.RLIMIT_NOFILE, (64, 64))
