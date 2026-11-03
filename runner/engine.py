@@ -45,7 +45,7 @@ class DockerExecutionEngine:
                     "-S",
                     "/opt/runner/entrypoint.py",
                 ],
-                user="65534:65534",
+                user="65534:65534",\n                tty=True,
                 read_only=True,
                 network_disabled=True,
                 cap_drop=["ALL"],
