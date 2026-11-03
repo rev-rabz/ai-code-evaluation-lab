@@ -165,7 +165,7 @@ def create_evaluation(
         except ValidationError as exc:
             raise HTTPException(status_code=502, detail="Execution service returned malformed test results.") from exc
     passed = sum(case.passed for case in feedback) if exit_code == 0 and not timed_out else 0
-    total = len(task.test_cases)
+    total = len(task_version.test_cases)
     rate = passed / total
     result.task_id = task.task_id
     result.execution_performed = True
