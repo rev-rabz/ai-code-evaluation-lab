@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from app.main import app
+from app.main import RUNNER_REQUEST_TIMEOUT_SECONDS, app
 
 client = TestClient(app)
 
@@ -83,7 +83,7 @@ def test_execution_response_is_returned_from_internal_runner(monkeypatch) -> Non
         assert url == "http://runner:8001/internal/execute"
         assert json["source_code"] == "print('hello')"
         assert headers["Authorization"] == "Bearer test-secret"
-        assert timeout == 8.0
+        assert timeout == RUNNER_REQUEST_TIMEOUT_SECONDS
         return FakeResponse()
 
     monkeypatch.setenv("RUNNER_URL", "http://runner:8001")
@@ -102,4 +102,34 @@ def test_execution_response_is_returned_from_internal_runner(monkeypatch) -> Non
     assert body["execution_exit_code"] == 0
     assert body["stdout"] == "hello\n"
     assert "untrusted" in body["note"]
-    assert "not executed" not in body["note"]
+    assert "execution was performed" in body["note"]
+    assert "Request isolated execution separately" not in body["note"]
+
+
+def test_execution_response_output_is_capped_at_16_kib(monkeypatch) -> None:
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {
+                "exit_code": 0,
+                "timed_out": False,
+                "duration_ms": 12.5,
+                "stdout": "X" * 50_000,
+                "stderr": "Y" * 50_000,
+            }
+
+    monkeypatch.setenv("RUNNER_URL", "http://runner:8001")
+    monkeypatch.setenv("RUNNER_TOKEN", "test-secret")
+    monkeypatch.setattr("app.main.httpx.post", lambda *args, **kwargs: FakeResponse())
+
+    response = client.post(
+        "/api/v1/evaluations",
+        json={"language": "python", "source_code": "print('x')", "execute": True},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["stdout"].encode("utf-8")) == 16_384
+    assert len(body["stderr"].encode("utf-8")) == 16_384
