@@ -184,7 +184,6 @@ ruff check .
 - [x] Execute registered trusted test cases in the isolated runner and derive scores server-side
 - [x] Persistent evaluation history (PostgreSQL in Compose; SQLite for local development)
 - [x] Authentication, bearer tokens, and per-user evaluation ownership
-- [ ] Optional AI-generated review with evidence-linked findings
 - [x] Separate candidate execution from trusted grading data (Stage 6)
 - [ ] Optional AI-generated review with evidence-linked findings
 - [ ] Rate limiting, monitoring, and reviewer dashboard
