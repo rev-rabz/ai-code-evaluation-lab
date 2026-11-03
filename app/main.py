@@ -16,7 +16,6 @@ from app.models import EvaluationRecord, User
 from app.task_routes import router as task_router
 from app.task_service import get_published_task
 from app.schemas import EvaluationRequest, EvaluationResponse, TestCaseFeedback
-from app.tasks import TASKS, get_task
 
 app = FastAPI(
     title="AI Code Evaluation Lab",
@@ -34,7 +33,8 @@ def _truncate_utf8(value: str, limit_bytes: int = EXECUTION_OUTPUT_LIMIT_BYTES) 
 
 
 def _persist_evaluation(
-    db: Session, request: EvaluationRequest, result: EvaluationResponse, user_id: int
+    db: Session, request: EvaluationRequest, result: EvaluationResponse, user_id: int,
+    task_version_id: int | None = None,
 ) -> None:
     record = EvaluationRecord(
         user_id=user_id,
@@ -120,10 +120,10 @@ def create_evaluation(
         result.task_id = task.task_id
         result.total_tests = len(task_version.test_cases)
         result.test_feedback = [
-            TestCaseFeedback(name=case.name, passed=False, expected=case.expected) for case in task_version.test_cases
+            TestCaseFeedback(name=case["name"], passed=False, expected=case["expected"]) for case in task_version.test_cases
         ]
         result.note = "Submission has a syntax error; trusted tests were not run and the score is zero."
-        _persist_evaluation(db, request, result, current_user.id)
+        _persist_evaluation(db, request, result, current_user.id, task_version_id)
         return result
 
     runner_url, runner_token = os.getenv("RUNNER_URL"), os.getenv("RUNNER_TOKEN")
@@ -155,10 +155,10 @@ def create_evaluation(
     raw_cases = execution.get("test_results")
     if timed_out or exit_code != 0:
         feedback = [
-            TestCaseFeedback(name=case.name, passed=False, expected=case.expected) for case in task.test_cases
+            TestCaseFeedback(name=case["name"], passed=False, expected=case["expected"]) for case in task_version.test_cases
         ]
     else:
-        if not isinstance(raw_cases, list) or len(raw_cases) != len(task.test_cases):
+        if not isinstance(raw_cases, list) or len(raw_cases) != len(task_version.test_cases):
             raise HTTPException(status_code=502, detail="Execution service returned an invalid test report.")
         try:
             feedback = [TestCaseFeedback.model_validate(case) for case in raw_cases]
