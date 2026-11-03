@@ -13,6 +13,7 @@ services:
     restart: unless-stopped
 
   runner:
+    image: ai-code-evaluation-python-runner:0.1.0
     build:
       context: .
       dockerfile: runner/Dockerfile
