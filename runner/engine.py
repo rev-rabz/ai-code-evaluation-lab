@@ -69,8 +69,10 @@ class DockerExecutionEngine:
                 working_dir="/workspace",
                 labels={"app": "ai-code-evaluation-lab", "purpose": "untrusted-code"},
             )
-            container.put_archive("/workspace", self._source_archive(encoded_source))
+            # Start first so Docker mounts the writable /workspace tmpfs before
+            # the Docker archive API attempts to extract the submitted file.
             container.start()
+            container.put_archive("/workspace", self._source_archive(encoded_source))
             try:
                 result = container.wait(timeout=self.timeout_seconds + 2)
                 exit_code = int(result.get("StatusCode", 1))
