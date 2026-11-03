@@ -3,7 +3,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.auth import get_current_user
+from app.auth import get_current_user, hash_password
 from app.database import Base, get_db
 from app.main import app
 from app.models import User
@@ -19,7 +19,7 @@ def isolate_database():
     TestingSessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
     Base.metadata.create_all(bind=engine)
     db = TestingSessionLocal()
-    test_user = User(id=1, email="owner@example.com", hashed_password="not-used-in-auth-overridden-tests")
+    test_user = User(id=1, email="owner@example.com", hashed_password=hash_password("Correct-Owner-Password-2026!"))
     db.add(test_user)
     db.commit()
     db.refresh(test_user)
