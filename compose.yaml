@@ -1,0 +1,26 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    environment:
+      RUNNER_URL: http://runner:8001
+      RUNNER_TOKEN: ${RUNNER_TOKEN:?Set RUNNER_TOKEN in your environment}
+    ports:
+      - "8000:8000"
+    depends_on:
+      - runner
+    restart: unless-stopped
+
+  runner:
+    image: ai-code-evaluation-python-runner:0.1.0
+    build:
+      context: .
+      dockerfile: runner/Dockerfile
+    environment:
+      RUNNER_TOKEN: ${RUNNER_TOKEN:?Set RUNNER_TOKEN in your environment}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    expose:
+      - "8001"
+    restart: unless-stopped
