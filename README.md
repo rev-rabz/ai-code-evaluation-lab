@@ -1,81 +1,120 @@
 # AI Code Evaluation Lab
 
-A Python/FastAPI starter platform for evaluating code submissions with syntax validation, static checks, test-case result analysis, and structured feedback.
+A Python/FastAPI platform for inspecting code submissions and optionally running Python code in a disposable, restricted Docker container.
 
-> **Security status:** This MVP does not execute submitted code. It parses Python source with the standard-library AST module and evaluates test results supplied by a trusted runner. Arbitrary submissions must not be executed on the API server. A separately isolated execution adapter is a planned next stage.
+> **Execution status:** The API never evaluates submitted code inside its own process. When execution is requested, it forwards source to a separate internal runner service. The runner launches a fresh container with no network, a read-only root filesystem, a non-root user, dropped Linux capabilities, resource limits, and automatic cleanup.
 
-## MVP features
+## Features
 
-- FastAPI endpoint for submitting Python source and test-case results
-- Python syntax validation without executing the submission
-- Basic static analysis (for example, missing functions and suspicious constructs)
-- Test result aggregation with pass rate and per-case feedback
-- Structured evaluation response suitable for a dashboard or future AI reviewer
-- Pytest test suite and GitHub Actions CI
+- FastAPI endpoint for Python submissions
+- Python syntax validation and basic static analysis
+- Test-result aggregation and structured feedback
+- Optional isolated Python execution through a separate runner service
+- Per-run timeout, memory, CPU, process, file-size, and output limits
+- Pytest and Ruff checks in GitHub Actions
 
 ## Stack
 
 - Python 3.11+
-- FastAPI and Pydantic
-- Pytest
-- Ruff
+- FastAPI, Pydantic, and HTTPX
+- Docker Engine and Docker SDK for Python
+- Pytest and Ruff
 
-## Run locally
+## Run the API without code execution
 
 ```bash
 python -m venv .venv
 # Windows: .venv\Scripts\activate
 # macOS/Linux: source .venv/bin/activate
-python -m pip install -e ".[dev]"
+python -m pip install -e ".[dev,runner]"
 uvicorn app.main:app --reload
 ```
 
-Open the interactive API docs at http://127.0.0.1:8000/docs.
+The API is available at http://127.0.0.1:8000 and its docs at http://127.0.0.1:8000/docs. Execution requests return HTTP 503 until the runner is configured.
 
-## Evaluate a submission
+## Run the isolated execution stack
+
+Requirements: Docker Engine with Compose v2. The runner requires access to the host Docker socket to create per-submission containers.
+
+1. Copy `.env.example` to `.env`.
+2. Generate a long random token, for example:
+
+   ```bash
+   python -c "import secrets; print(secrets.token_urlsafe(48))"
+   ```
+
+3. Put the generated value in `RUNNER_TOKEN` in `.env`.
+4. Start the stack:
+
+   ```bash
+   docker compose --env-file .env up --build
+   ```
+
+The API is exposed on port 8000. The runner is not published to the host; it is reachable only on the Compose network and requires the shared bearer token.
+
+## Execute a submission
 
 Send a POST request to `/api/v1/evaluations`:
 
 ```json
 {
   "language": "python",
-  "source_code": "def add(a, b):\n    return a + b\n",
-  "required_functions": ["add"],
-  "test_results": [
-    {"name": "adds positive numbers", "passed": true, "expected": 5, "actual": 5},
-    {"name": "adds negative numbers", "passed": false, "expected": -1, "actual": 0}
-  ]
+  "source_code": "print('Hello from the sandbox')",
+  "execute": true
 }
 ```
 
-The endpoint validates syntax and source structure, then summarizes the supplied test results. In this MVP, `test_results` must come from a trusted test runner; the API does not run the submitted code.
+The response includes `execution_performed`, `execution_exit_code`, `execution_timed_out`, `execution_duration_ms`, `stdout`, and `stderr`.
+
+Set `execute` to false (the default) to perform static inspection only.
+
+## Sandbox controls
+
+Each execution gets a new container with:
+
+- Network disabled
+- Read-only container root filesystem
+- Non-root UID/GID 65534
+- All Linux capabilities dropped
+- `no-new-privileges`
+- 128 MiB memory limit and 0.5 CPU quota
+- 32-process limit
+- 5-second wall-clock timeout and CPU ulimits
+- 16 MiB `/tmp` and 2 MiB output tmpfs, both no-exec
+- 1 MiB per-file size limit, bounded response output, and forced container cleanup
+
+The submitted source is mounted read-only. Standard output and standard error are written to a size-limited tmpfs and read back after execution.
+
+## Important security limitations
+
+This is a development-stage isolation layer, **not a claim of perfect or production-grade sandbox security**. Containers share the host kernel; Docker alone is not a complete security boundary. The runner service has access to the Docker daemon socket, which is effectively host-level authority. Keep it private, protect the bearer token, use a dedicated disposable host/VM, keep Docker and the host kernel patched, and do not expose the runner endpoint publicly.
+
+For higher-risk multi-tenant workloads, use a stronger isolation boundary such as dedicated ephemeral VMs or a purpose-built sandbox runtime, add host-level monitoring and quotas, and perform an independent security review before accepting arbitrary public submissions.
+
+The current test-result fields are client-supplied input for API demonstration only. They are **not trusted evidence** and must not be used to award real evaluation scores until test cases are executed and attested by a trusted isolated test harness.
 
 ## API
 
-- `GET /health` — service health
-- `POST /api/v1/evaluations` — evaluate source and trusted test results
+- `GET /health` — API health
+- `POST /api/v1/evaluations` — inspect source; optionally request execution
+- Runner's `POST /internal/execute` — private, token-protected internal endpoint
+
+## Development checks
+
+```bash
+python -m pip install -e ".[dev,runner]"
+pytest
+ruff check .
+``
 
 ## Roadmap
 
-- [x] API skeleton and typed request/response models
-- [x] Syntax validation and basic static analysis
-- [x] Test-result scoring and feedback
-- [x] Automated tests and CI
+- [x] API skeleton, schemas, syntax checks, and initial CI
+- [x] Separate runner service and disposable restricted execution containers
+- [ ] Execute trusted test cases inside the isolated runner and derive scores server-side
 - [ ] Persistent evaluation history (PostgreSQL)
-- [ ] Isolated execution service with strict CPU, memory, process, filesystem, and network controls
 - [ ] Optional AI-generated review with evidence-linked findings
-- [ ] Authentication, rate limiting, and a reviewer dashboard
-
-## Security principles
-
-Never run untrusted source code inside the FastAPI process or a normal application container. The future execution service should use a dedicated isolation boundary, non-root execution, read-only filesystems, no network by default, resource limits, syscall restrictions, and per-job cleanup. Docker alone should not be treated as a complete security boundary.
-
-## Development
-
-```bash
-pytest
-ruff check .
-```
+- [ ] Authentication, rate limiting, monitoring, and reviewer dashboard
 
 ## License
 
