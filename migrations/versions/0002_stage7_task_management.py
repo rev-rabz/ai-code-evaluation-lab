@@ -88,6 +88,7 @@ def upgrade() -> None:
         result = bind.execute(sa.text("""
             INSERT INTO task_versions (task_id, version, function_name, test_cases, is_published, created_at)
             VALUES (:task_id, 1, :function_name, :test_cases, TRUE, :created_at)
+            RETURNING id
         """).bindparams(sa.bindparam("test_cases", type_=sa.JSON())), {
             "task_id": "python.add",
             "function_name": "add",
@@ -100,12 +101,7 @@ def upgrade() -> None:
             ],
             "created_at": now,
         })
-        version_id = result.lastrowid
-        if version_id is None:
-            version_id = bind.execute(
-                sa.text("SELECT id FROM task_versions WHERE task_id = :task_id AND version = 1"),
-                {"task_id": "python.add"},
-            ).scalar_one()
+        version_id = result.scalar_one()
         bind.execute(
             sa.text("UPDATE tasks SET active_version_id = :version_id WHERE task_id = :task_id"),
             {"version_id": version_id, "task_id": "python.add"},
