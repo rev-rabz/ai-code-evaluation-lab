@@ -1,6 +1,6 @@
-import runner.main as runner_main
 from fastapi.testclient import TestClient
 
+import runner.main as runner_main
 
 client = TestClient(runner_main.app)
 
