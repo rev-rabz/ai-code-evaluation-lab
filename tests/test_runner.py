@@ -51,3 +51,70 @@ def test_runner_executes_through_engine_after_authentication(monkeypatch):
                            json=PAYLOAD)
     assert response.status_code == 200
     assert response.json()["test_results"][0]["passed"] is True
+
+
+def test_engine_keeps_expected_values_outside_candidate_containers(monkeypatch):
+    import base64
+    import json
+
+    import runner.engine as engine_module
+
+    captured_invocations = []
+
+    class FakeContainer:
+        attrs = {"State": {"Status": "exited", "ExitCode": 0}}
+
+        def start(self):
+            pass
+
+        def reload(self):
+            pass
+
+        def logs(self, stdout=True, stderr=False):
+            payload = {
+                "result": {"ok": True, "actual": 5},
+                "stdout": "",
+                "stderr": "",
+            }
+            return (
+                engine_module.DockerExecutionEngine.candidate_marker
+                + json.dumps(payload)
+                + "\\n"
+            ).encode()
+
+        def remove(self, force=True):
+            pass
+
+    class FakeContainers:
+        def create(self, image, **kwargs):
+            environment = kwargs["environment"]
+            assert set(environment) == {
+                "EVAL_SOURCE_B64",
+                "EVAL_ARGS_B64",
+                "EVAL_FUNCTION_NAME",
+            }
+            assert "expected" not in environment
+            assert "test_cases" not in environment
+            captured_invocations.append(
+                json.loads(base64.b64decode(environment["EVAL_ARGS_B64"]))
+            )
+            return FakeContainer()
+
+    class FakeClient:
+        containers = FakeContainers()
+
+    monkeypatch.setattr(engine_module.docker, "from_env", lambda: FakeClient())
+    engine = engine_module.DockerExecutionEngine()
+    result = engine.execute(
+        "def add(a, b): return a + b",
+        function_name="add",
+        test_cases=[
+            {"name": "first", "args": [2, 3], "expected": 5},
+            {"name": "second", "args": [4, 1], "expected": 99},
+        ],
+    )
+
+    assert captured_invocations == [[2, 3], [4, 1]]
+    assert [case["passed"] for case in result["test_results"]] == [True, False]
+    assert result["exit_code"] == 0
+    assert result["timed_out"] is False
