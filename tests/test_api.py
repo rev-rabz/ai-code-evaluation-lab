@@ -112,7 +112,7 @@ def test_timeout_without_result_marker_returns_zero_score(monkeypatch):
     monkeypatch.setenv("RUNNER_TOKEN", "secret")
     monkeypatch.setattr("app.main.httpx.post", lambda *args, **kwargs: FakeResponse())
     response = client.post("/api/v1/evaluations", json={
-        "language": "python", "source_code": "def add(a, b): while True: pass",
+        "language": "python", "source_code": "def add(a, b):\n    while True:\n        pass",
         "task_id": "python.add", "execute": True,
     })
     assert response.status_code == 200
