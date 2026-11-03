@@ -17,7 +17,7 @@ def test_evaluation_endpoint_returns_structured_result() -> None:
         "/api/v1/evaluations",
         json={
             "language": "python",
-            "source_code": "def add(a, b):\\n    return a + b\\n",
+            "source_code": "def add(a, b):\n    return a + b\n",
             "required_functions": ["add"],
             "test_results": [
                 {"name": "adds two numbers", "passed": True, "expected": 5, "actual": 5}
