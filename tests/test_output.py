@@ -5,7 +5,7 @@ from runner.output import BoundedTextWriter
 
 def test_bounded_writer_truncates_at_utf8_byte_limit() -> None:
     stream = StringIO()
-    writer = BoundedTextWriter(stream, limit_bytes=5)
+    writer = BoundedTextWriter(stream, limit_bytes=4)
 
     assert writer.write("abéxyz") == 6
     writer.flush()
