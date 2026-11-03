@@ -264,7 +264,6 @@ def test_evaluation_history_is_private_to_each_user(monkeypatch):
     first = client.post("/api/v1/evaluations", json={
         "language": "python", "source_code": "def add(a, b): return a + b",
     })
-    evaluation_id = first.json()["id"] if "id" in first.json() else None
     assert first.status_code == 200
     first_history = client.get("/api/v1/evaluations")
     assert len(first_history.json()) == 1
