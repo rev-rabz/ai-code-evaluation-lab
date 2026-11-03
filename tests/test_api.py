@@ -15,7 +15,10 @@ def test_health_endpoint_returns_ok():
 def test_task_catalogue_is_server_owned():
     response = client.get("/api/v1/tasks")
     assert response.status_code == 200
-    assert response.json() == [{"task_id": "python.add", "function_name": "add", "test_case_count": 5}]
+    body = response.json()
+    assert len(body) == 1
+    assert body[0]["task_id"] == "python.add"
+    assert body[0]["active_version"] == 1
 
 
 def test_static_evaluation_ignores_client_test_results():
