@@ -1,4 +1,5 @@
-import json
+import io
+import tarfile
 import tempfile
 import time
 from pathlib import Path
@@ -12,7 +13,7 @@ class ExecutionError(RuntimeError):
 
 
 class DockerExecutionEngine:
-    """Run one Python submission in a disposable, heavily restricted container."""
+    """Run one Python submission in a disposable, restricted container."""
 
     image = "ai-code-evaluation-python-runner:0.1.0"
     timeout_seconds = 5
@@ -30,11 +31,8 @@ class DockerExecutionEngine:
 
         started = time.monotonic()
         with tempfile.TemporaryDirectory(prefix="code-eval-") as temporary:
-            root = Path(temporary)
-            source_dir = root / "source"
-            output_dir = root / "output"
+            source_dir = Path(temporary) / "source"
             source_dir.mkdir(mode=0o700)
-            output_dir.mkdir(mode=0o700)
             (source_dir / "submission.py").write_text(source_code, encoding="utf-8")
 
             container = None
@@ -43,7 +41,12 @@ class DockerExecutionEngine:
             try:
                 container = self.client.containers.run(
                     self.image,
-                    command=["/usr/local/bin/python", "-I", "-S", "/opt/runner/entrypoint.py"],
+                    command=[
+                        "/usr/local/bin/python",
+                        "-I",
+                        "-S",
+                        "/opt/runner/entrypoint.py",
+                    ],
                     detach=True,
                     auto_remove=False,
                     user="65534:65534",
@@ -61,11 +64,11 @@ class DockerExecutionEngine:
                         docker.types.Ulimit(name="nofile", soft=64, hard=64),
                         docker.types.Ulimit(name="core", soft=0, hard=0),
                     ],
-                    tmpfs={"/tmp": "rw,noexec,nosuid,nodev,size=16m"},
-                    volumes={
-                        str(source_dir): {"bind": "/workspace", "mode": "ro"},
-                        str(output_dir): {"bind": "/output", "mode": "rw"},
+                    tmpfs={
+                        "/tmp": "rw,noexec,nosuid,nodev,size=16m",
+                        "/output": "rw,noexec,nosuid,nodev,size=2m",
                     },
+                    volumes={str(source_dir): {"bind": "/workspace", "mode": "ro"}},
                     working_dir="/workspace",
                     labels={"app": "ai-code-evaluation-lab", "purpose": "untrusted-code"},
                 )
@@ -89,19 +92,29 @@ class DockerExecutionEngine:
                     except DockerException:
                         pass
 
-            stdout = self._read_output(output_dir / "stdout.txt")
-            stderr = self._read_output(output_dir / "stderr.txt")
-            duration_ms = round((time.monotonic() - started) * 1000, 2)
+            stdout = self._read_container_file(container, "/output/stdout.txt")
+            stderr = self._read_container_file(container, "/output/stderr.txt")
             return {
                 "exit_code": exit_code,
                 "timed_out": timed_out,
-                "duration_ms": duration_ms,
+                "duration_ms": round((time.monotonic() - started) * 1000, 2),
                 "stdout": stdout,
                 "stderr": stderr,
             }
 
-    def _read_output(self, path: Path) -> str:
-        if not path.exists():
+    def _read_container_file(self, container: object, path: str) -> str:
+        if container is None:
             return ""
-        content = path.read_bytes()[: self.output_limit_bytes]
-        return content.decode("utf-8", errors="replace")
+        try:
+            archive, _ = container.get_archive(path)
+            content = b"".join(archive)
+            with tarfile.open(fileobj=io.BytesIO(content), mode="r:") as bundle:
+                member = bundle.next()
+                if member is None:
+                    return ""
+                stream = bundle.extractfile(member)
+                if stream is None:
+                    return ""
+                return stream.read(self.output_limit_bytes).decode("utf-8", errors="replace")
+        except (DockerException, OSError, tarfile.TarError):
+            return ""
