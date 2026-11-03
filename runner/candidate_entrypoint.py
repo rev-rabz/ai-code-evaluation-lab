@@ -3,7 +3,10 @@ import base64
 import io
 import json
 import os
-import resource
+try:
+    import resource
+except ImportError:  # Windows-based local test environments do not expose resource.
+    resource = None
 import sys
 import traceback
 
@@ -92,9 +95,10 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    resource.setrlimit(resource.RLIMIT_CPU, (6, 7))
-    resource.setrlimit(resource.RLIMIT_FSIZE, (1_048_576, 1_048_576))
-    resource.setrlimit(resource.RLIMIT_NPROC, (16, 16))
-    resource.setrlimit(resource.RLIMIT_NOFILE, (64, 64))
-    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+    if resource is not None:
+        resource.setrlimit(resource.RLIMIT_CPU, (6, 7))
+        resource.setrlimit(resource.RLIMIT_FSIZE, (1_048_576, 1_048_576))
+        resource.setrlimit(resource.RLIMIT_NPROC, (16, 16))
+        resource.setrlimit(resource.RLIMIT_NOFILE, (64, 64))
+        resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     raise SystemExit(main())
