@@ -79,7 +79,7 @@ def test_engine_keeps_expected_values_outside_candidate_containers(monkeypatch):
             return (
                 engine_module.DockerExecutionEngine.candidate_marker
                 + json.dumps(payload)
-                + "\\n"
+                + "\n"
             ).encode()
 
         def remove(self, force=True):
