@@ -1,6 +1,7 @@
 """Execute one untrusted test invocation without access to trusted grading data."""
 import base64
 import io
+import itertools
 import json
 import os
 import sys
@@ -53,7 +54,7 @@ def _safe_actual(value: object, depth: int = 0) -> object:
     if isinstance(value, dict):
         return {
             str(key)[:256]: _safe_actual(item, depth + 1)
-            for key, item in list(value.items())[:100]
+            for key, item in itertools.islice(value.items(), 100)
         }
     return f"<{type(value).__name__}>"
 
