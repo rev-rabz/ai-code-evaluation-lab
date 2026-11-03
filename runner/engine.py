@@ -1,4 +1,6 @@
+import base64
 import io
+import json
 import tarfile
 import time
 
@@ -81,8 +83,7 @@ class DockerExecutionEngine:
                     pass
                 container.wait(timeout=2)
 
-            stdout = self._read_container_file(container, "/output/stdout.txt")
-            stderr = self._read_container_file(container, "/output/stderr.txt")
+            stdout, stderr = self._read_container_result(container)
         except (DockerException, ImageNotFound) as exc:
             raise ExecutionError(
                 "Runner image is missing or Docker could not start the sandbox."
@@ -112,17 +113,24 @@ class DockerExecutionEngine:
         archive.seek(0)
         return archive.read()
 
-    def _read_container_file(self, container: object, path: str) -> str:
+    def _read_container_result(self, container: object) -> tuple[str, str]:
         try:
-            archive, _ = container.get_archive(path)
-            content = b"".join(archive)
-            with tarfile.open(fileobj=io.BytesIO(content), mode="r:") as bundle:
-                member = bundle.next()
-                if member is None:
-                    return ""
-                stream = bundle.extractfile(member)
-                if stream is None:
-                    return ""
-                return stream.read(self.output_limit_bytes).decode("utf-8", errors="replace")
-        except (DockerException, OSError, tarfile.TarError):
-            return ""
+            logs = container.logs(stdout=True, stderr=False).decode("utf-8", errors="replace")
+        except (DockerException, AttributeError):
+            return "", ""
+
+        marker = "__EVAL_RESULT__"
+        for line in reversed(logs.splitlines()):
+            if not line.startswith(marker):
+                continue
+            try:
+                result = json.loads(line[len(marker) :])
+                stdout = base64.b64decode(result["stdout"], validate=True)
+                stderr = base64.b64decode(result["stderr"], validate=True)
+                return (
+                    stdout[: self.output_limit_bytes].decode("utf-8", errors="replace"),
+                    stderr[: self.output_limit_bytes].decode("utf-8", errors="replace"),
+                )
+            except (KeyError, ValueError, TypeError, json.JSONDecodeError):
+                return "", ""
+        return "", ""
