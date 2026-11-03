@@ -1,6 +1,6 @@
 # AI Code Evaluation Lab
 
-A Python/FastAPI platform for inspecting code submissions and optionally running Python code in a disposable, restricted Docker container.
+A Python/FastAPI platform for inspecting code submissions, running trusted tests in disposable Docker containers, and retaining private evaluation history for registered users.
 
 > **Execution status:** The API never evaluates submitted code inside its own process. When execution is requested, it forwards source to a separate internal runner service. The runner launches a fresh container with no network, a read-only root filesystem, a non-root user, dropped Linux capabilities, resource limits, and automatic cleanup.
 
@@ -8,69 +8,157 @@ A Python/FastAPI platform for inspecting code submissions and optionally running
 
 - FastAPI endpoint for Python submissions
 - Python syntax validation and basic static analysis
-- Test-result aggregation and structured feedback
-- Optional isolated Python execution through a separate runner service
+- Server-owned Python task catalogue and trusted test feedback
+- Server-calculated scores from tests executed in the isolated runner
+- Persistent PostgreSQL evaluation history (SQLite for local development)
+- Account registration and login with Argon2 password hashing
+- Short-lived signed bearer tokens (JWT)
+- Authenticated submissions and user-scoped history/detail endpoints
+- Alembic schema migrations
 - Per-run timeout, memory, CPU, process, file-size, and output limits
 - Pytest and Ruff checks in GitHub Actions
 
 ## Stack
 
 - Python 3.11+
-- FastAPI, Pydantic, and HTTPX
+- FastAPI, Pydantic, HTTPX
+- SQLAlchemy and Alembic
+- PostgreSQL / SQLite
+- Argon2 password hashing and PyJWT
 - Docker Engine and Docker SDK for Python
 - Pytest and Ruff
 
-## Run the API without code execution
+## Run locally
 
 ```bash
 python -m venv .venv
 # Windows: .venv\Scripts\activate
 # macOS/Linux: source .venv/bin/activate
 python -m pip install -e ".[dev,runner]"
+```
+
+Set the required environment variables before starting the API:
+
+- `JWT_SECRET`: a long random signing secret
+- `RUNNER_URL` and `RUNNER_TOKEN`: required only for code execution
+- `DATABASE_URL`: optional; defaults to SQLite at `./data/evaluations.db`
+
+Generate a secret with:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+Apply database migrations and start the API:
+
+```bash
+alembic upgrade head
 uvicorn app.main:app --reload
 ```
 
-The API is available at http://127.0.0.1:8000 and its docs at http://127.0.0.1:8000/docs. Execution requests return HTTP 503 until the runner is configured.
+The API is available at http://127.0.0.1:8000 and its docs at http://127.0.0.1:8000/docs.
 
-## Run the isolated execution stack
+## Run the Docker execution stack
 
 Requirements: Docker Engine with Compose v2. The runner requires access to the host Docker socket to create per-submission containers.
 
 1. Copy `.env.example` to `.env`.
-2. Generate a long random token, for example:
-
-   ```bash
-   python -c "import secrets; print(secrets.token_urlsafe(48))"
-   ```
-
-3. Put the generated value in `RUNNER_TOKEN` in `.env`.
-4. Start the stack:
+2. Generate three independent random values for `RUNNER_TOKEN`, `POSTGRES_PASSWORD`, and `JWT_SECRET`.
+3. Start the stack:
 
    ```bash
    docker compose --env-file .env up --build
    ```
 
-The API is exposed on port 8000. The runner is not published to the host; it is reachable only on the Compose network and requires the shared bearer token.
+The API is exposed on port 8000. PostgreSQL stores evaluation history in a named Docker volume. The API container applies Alembic migrations before starting. The runner is not published to the host; it is reachable only on the Compose network and requires the shared bearer token.
+
+Do not use `docker compose down -v` unless you intend to delete the PostgreSQL volume and all saved evaluation history.
+
+## Authentication
+
+Register an account:
+
+```http
+POST /api/v1/auth/register
+Content-Type: application/json
+
+{"email":"developer@example.com","password":"a-long-unique-password"}
+```
+
+Passwords must be at least 12 characters. The API stores an Argon2 password hash, never the submitted password.
+
+Log in:
+
+```http
+POST /api/v1/auth/login
+Content-Type: application/json
+
+{"email":"developer@example.com","password":"a-long-unique-password"}
+```
+
+The response contains a bearer access token valid for 30 minutes. Send it on protected requests:
+
+```http
+Authorization: Bearer <access_token>
+```
+
+Use `GET /api/v1/auth/me` to retrieve the authenticated account. Evaluation submission and history endpoints require authentication. A user can only list or retrieve their own evaluation records; another user's record returns 404.
 
 ## Execute a submission
 
-Send a POST request to `/api/v1/evaluations`:
+Send a POST request to `/api/v1/evaluations` with a valid bearer token:
 
 ```json
 {
   "language": "python",
-  "source_code": "print('Hello from the sandbox')",
+  "source_code": "def add(a, b): return a + b",
+  "task_id": "python.add",
   "execute": true
 }
 ```
 
-The response includes `execution_performed`, `execution_exit_code`, `execution_timed_out`, `execution_duration_ms`, `stdout`, and `stderr`.
+The response includes `execution_performed`, `execution_exit_code`, `execution_timed_out`, `execution_duration_ms`, `stdout`, `stderr`, trusted test feedback, and a score calculated by the API. List available tasks with public `GET /api/v1/tasks`.
 
-Set `execute` to false (the default) to perform static inspection only.
+Set `execute` to false (the default) to perform static inspection only. All new evaluations are associated with the authenticated account.
+
+## Task management (Stage 7)
+
+The public task catalogue contains published, non-archived tasks only:
+
+- `GET /api/v1/tasks` — list published tasks
+- `GET /api/v1/tasks/{task_id}` — task description, instructions, examples, active version, and test names/arguments (expected values are never exposed)
+
+Task administration requires an account with the administrator flag:
+
+- `GET /api/v1/admin/tasks` — list all tasks, including drafts and archived tasks
+- `POST /api/v1/admin/tasks` — create a draft task and version 1 with trusted tests
+- `PATCH /api/v1/admin/tasks/{task_id}` — update descriptive metadata
+- `GET /api/v1/admin/tasks/{task_id}/versions` — inspect version history and trusted test cases
+- `POST /api/v1/admin/tasks/{task_id}/versions` — create the next immutable test-suite version
+- `POST /api/v1/admin/tasks/{task_id}/versions/{version_id}/publish` — publish and activate a version
+- `POST /api/v1/admin/tasks/{task_id}/archive` — archive a task
+
+New accounts are never administrators by default. After registering an operator account, an operator with database access can explicitly grant administrator access inside the API container:
+
+```bash
+docker compose exec api python -m app.promote_admin developer@example.com
+```
+
+Task version test cases are immutable through the API: create a new version to change the function contract or trusted tests. Evaluation history stores `task_version_id`; pre-Stage-7 records remain unversioned and are not retroactively assigned a version.
+
+See [docs/stage-7-plan.md](docs/stage-7-plan.md) for the milestone plan.
+
+## Evaluation history
+
+- `GET /api/v1/evaluations?limit=20&offset=0` — list the authenticated user's records
+- `GET /api/v1/evaluations?task_id=python.add` — filter the authenticated user's records by task
+- `GET /api/v1/evaluations/{id}` — retrieve the authenticated user's full result and source code
+
+The migration preserves pre-Stage-5 history rows, but those legacy rows have no account owner and are not exposed through authenticated history endpoints. No automatic ownership assignment is performed.
 
 ## Sandbox controls
 
-Each execution gets a new container with:
+Each test case gets a new candidate container with:
 
 - Network disabled
 - Read-only container root filesystem
@@ -79,11 +167,11 @@ Each execution gets a new container with:
 - `no-new-privileges`
 - 128 MiB memory limit and 0.5 CPU quota
 - 32-process limit
-- 5-second wall-clock timeout and CPU ulimits
-- 16 MiB `/tmp` and 2 MiB output tmpfs, both no-exec
+- 5-second per-case wall-clock timeout, 30-second overall execution budget, and CPU ulimits
+- 16 MiB no-exec `/tmp` tmpfs, with bounded in-memory stdout/stderr capture
 - 1 MiB per-file size limit, bounded response output, and forced container cleanup
 
-The submitted source is mounted read-only. Standard output and standard error are written to a size-limited tmpfs and read back after execution.
+The submitted source and one test case's arguments are passed to a disposable candidate container through bounded environment values. Candidate code runs from memory; it does not receive the expected value or the full test suite. Standard output and standard error are captured in memory with a 16 KiB limit and returned through a bounded result marker.
 
 ## Important security limitations
 
@@ -91,30 +179,43 @@ This is a development-stage isolation layer, **not a claim of perfect or product
 
 For higher-risk multi-tenant workloads, use a stronger isolation boundary such as dedicated ephemeral VMs or a purpose-built sandbox runtime, add host-level monitoring and quotas, and perform an independent security review before accepting arbitrary public submissions.
 
-The current test-result fields are client-supplied input for API demonstration only. They are **not trusted evidence** and must not be used to award real evaluation scores until test cases are executed and attested by a trusted isolated test harness.
+The legacy `test_results` request field is retained temporarily for compatibility, but is ignored for scoring. Only server-registered test cases are sent to the private runner. The API validates the runner's test report and calculates the score itself. The first registered task is `python.add`, with five fixed test cases. The runner keeps expected values and the complete test suite outside candidate containers, starts a fresh candidate container for each test case, and compares returned values in the trusted runner process. A candidate receives only its source, function name, and the current case's arguments. This closes the earlier same-process test-harness tampering weakness, but it is not cheat-proof or production-grade sandboxing.
+
+Stage 5 adds authentication and record ownership, but does not yet include email verification, password reset, refresh tokens, token revocation/logout, account deletion, or rate limiting. Protect registration and login with edge/API rate limits before public deployment. JWT access tokens remain valid until expiry if stolen.
 
 ## API
 
-- `GET /health` — API health
-- `POST /api/v1/evaluations` — inspect source; optionally request execution
+- `GET /health` — health check
+- `GET /api/v1/tasks` — public task catalogue
+- `POST /api/v1/auth/register` — create account
+- `POST /api/v1/auth/login` — obtain bearer token
+- `GET /api/v1/auth/me` — current account (authenticated)
+- `POST /api/v1/evaluations` — submit evaluation (authenticated)
+- `GET /api/v1/evaluations` — own evaluation history (authenticated)
+- `GET /api/v1/evaluations/{id}` — own evaluation detail (authenticated)
 - Runner's `POST /internal/execute` — private, token-protected internal endpoint
 
 ## Development checks
 
 ```bash
 python -m pip install -e ".[dev,runner]"
+alembic upgrade head
 pytest
 ruff check .
-``
+```
 
 ## Roadmap
 
 - [x] API skeleton, schemas, syntax checks, and initial CI
 - [x] Separate runner service and disposable restricted execution containers
-- [ ] Execute trusted test cases inside the isolated runner and derive scores server-side
-- [ ] Persistent evaluation history (PostgreSQL)
+- [x] Execute registered trusted test cases in the isolated runner and derive scores server-side
+- [x] Persistent evaluation history (PostgreSQL in Compose; SQLite for local development)
+- [x] Authentication, bearer tokens, and per-user evaluation ownership
+- [x] Separate candidate execution from trusted grading data (Stage 6)
+- [ ] Database-backed task management, administrator controls, and immutable trusted test-suite versions (Stage 7 — in progress; see `docs/stage-7-plan.md`)
 - [ ] Optional AI-generated review with evidence-linked findings
-- [ ] Authentication, rate limiting, monitoring, and reviewer dashboard
+- [ ] Rate limiting, monitoring, and reviewer dashboard
+- [ ] Stronger execution isolation and independent security review
 
 ## License
 
