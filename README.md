@@ -140,7 +140,7 @@ Each test case gets a new candidate container with:
 - `no-new-privileges`
 - 128 MiB memory limit and 0.5 CPU quota
 - 32-process limit
-- 5-second wall-clock timeout and CPU ulimits
+- 5-second per-case wall-clock timeout, 30-second overall execution budget, and CPU ulimits
 - 16 MiB no-exec `/tmp` tmpfs, with bounded in-memory stdout/stderr capture
 - 1 MiB per-file size limit, bounded response output, and forced container cleanup
 
