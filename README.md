@@ -133,6 +133,7 @@ Task administration requires an account with the administrator flag:
 - `GET /api/v1/admin/tasks` — list all tasks, including drafts and archived tasks
 - `POST /api/v1/admin/tasks` — create a draft task and version 1 with trusted tests
 - `PATCH /api/v1/admin/tasks/{task_id}` — update descriptive metadata
+- `GET /api/v1/admin/tasks/{task_id}/versions` — inspect version history and trusted test cases
 - `POST /api/v1/admin/tasks/{task_id}/versions` — create the next immutable test-suite version
 - `POST /api/v1/admin/tasks/{task_id}/versions/{version_id}/publish` — publish and activate a version
 - `POST /api/v1/admin/tasks/{task_id}/archive` — archive a task
