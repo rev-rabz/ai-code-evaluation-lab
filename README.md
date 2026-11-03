@@ -131,7 +131,7 @@ The migration preserves pre-Stage-5 history rows, but those legacy rows have no 
 
 ## Sandbox controls
 
-Each execution gets a new container with:
+Each test case gets a new candidate container with:
 
 - Network disabled
 - Read-only container root filesystem
@@ -141,10 +141,10 @@ Each execution gets a new container with:
 - 128 MiB memory limit and 0.5 CPU quota
 - 32-process limit
 - 5-second wall-clock timeout and CPU ulimits
-- 16 MiB `/tmp` and 2 MiB output tmpfs, both no-exec
+- 16 MiB no-exec `/tmp` tmpfs, with bounded in-memory stdout/stderr capture
 - 1 MiB per-file size limit, bounded response output, and forced container cleanup
 
-The submitted source is passed to the disposable container through a bounded environment value, then written by the non-root entrypoint into the writable, no-exec `/workspace` tmpfs. Standard output and standard error are written to a size-limited tmpfs and read back after execution.
+The submitted source and one test case's arguments are passed to a disposable candidate container through bounded environment values. Candidate code runs from memory; it does not receive the expected value or the full test suite. Standard output and standard error are captured in memory with a 16 KiB limit and returned through a bounded result marker.
 
 ## Important security limitations
 
@@ -152,7 +152,7 @@ This is a development-stage isolation layer, **not a claim of perfect or product
 
 For higher-risk multi-tenant workloads, use a stronger isolation boundary such as dedicated ephemeral VMs or a purpose-built sandbox runtime, add host-level monitoring and quotas, and perform an independent security review before accepting arbitrary public submissions.
 
-The legacy `test_results` request field is retained temporarily for compatibility, but is ignored for scoring. Only server-registered test cases are sent to the private runner. The API validates the runner's test report and calculates the score itself. The first registered task is `python.add`, with five fixed test cases. The test harness currently invokes the submitted function in the same Python process as the harness inside the disposable container; determined submissions may attempt introspection or tampering. Treat this as a learning-stage implementation, not cheat-proof grading.
+The legacy `test_results` request field is retained temporarily for compatibility, but is ignored for scoring. Only server-registered test cases are sent to the private runner. The API validates the runner's test report and calculates the score itself. The first registered task is `python.add`, with five fixed test cases. The runner keeps expected values and the complete test suite outside candidate containers, starts a fresh candidate container for each test case, and compares returned values in the trusted runner process. A candidate receives only its source, function name, and the current case's arguments. This closes the earlier same-process test-harness tampering weakness, but it is not cheat-proof or production-grade sandboxing.
 
 Stage 5 adds authentication and record ownership, but does not yet include email verification, password reset, refresh tokens, token revocation/logout, account deletion, or rate limiting. Protect registration and login with edge/API rate limits before public deployment. JWT access tokens remain valid until expiry if stolen.
 
@@ -185,7 +185,7 @@ ruff check .
 - [x] Persistent evaluation history (PostgreSQL in Compose; SQLite for local development)
 - [x] Authentication, bearer tokens, and per-user evaluation ownership
 - [ ] Optional AI-generated review with evidence-linked findings
-- [ ] Rate limiting, monitoring, and reviewer dashboard
+- [x] Separate candidate execution from trusted grading data (Stage 6)\n- [ ] Rate limiting, monitoring, and reviewer dashboard
 - [ ] Stronger execution isolation and independent security review
 
 ## License
