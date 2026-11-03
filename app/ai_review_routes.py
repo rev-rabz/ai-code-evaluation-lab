@@ -10,7 +10,6 @@ from app.ai_review_service import (
     AIReviewOutputError,
     AIReviewProviderError,
     generate_ai_review,
-    review_model_name,
 )
 from app.auth import get_current_user
 from app.database import get_db
