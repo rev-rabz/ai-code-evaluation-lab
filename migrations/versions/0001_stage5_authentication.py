@@ -23,7 +23,6 @@ def upgrade() -> None:
             sa.Column("email", sa.String(length=320), nullable=False),
             sa.Column("hashed_password", sa.Text(), nullable=False),
             sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
-            sa.UniqueConstraint("email", name="uq_users_email"),
         )
 
     inspector = inspect(bind)
@@ -49,15 +48,17 @@ def upgrade() -> None:
         if "user_id" not in columns:
             with op.batch_alter_table("evaluations") as batch_op:
                 batch_op.add_column(sa.Column("user_id", sa.Integer(), nullable=True))
-                batch_op.create_foreign_key("fk_evaluations_user_id_users", "users", ["user_id"], ["id"], ondelete="SET NULL")
+                batch_op.create_foreign_key(
+                    "fk_evaluations_user_id_users", "users", ["user_id"], ["id"], ondelete="SET NULL"
+                )
 
-    for table, column, index in [
-        ("users", "email", "ix_users_email"),
-        ("evaluations", "user_id", "ix_evaluations_user_id"),
+    for table, column, index, unique in [
+        ("users", "email", "ix_users_email", True),
+        ("evaluations", "user_id", "ix_evaluations_user_id", False),
     ]:
         existing = {item["name"] for item in inspect(bind).get_indexes(table)}
         if index not in existing:
-            op.create_index(index, table, [column], unique=(table == "users" and column == "email"))
+            op.create_index(index, table, [column], unique=unique)
 
 
 def downgrade() -> None:
