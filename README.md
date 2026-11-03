@@ -121,6 +121,32 @@ The response includes `execution_performed`, `execution_exit_code`, `execution_t
 
 Set `execute` to false (the default) to perform static inspection only. All new evaluations are associated with the authenticated account.
 
+## Task management (Stage 7)
+
+The public task catalogue contains published, non-archived tasks only:
+
+- `GET /api/v1/tasks` — list published tasks
+- `GET /api/v1/tasks/{task_id}` — task description, instructions, examples, active version, and test names/arguments (expected values are never exposed)
+
+Task administration requires an account with the administrator flag:
+
+- `GET /api/v1/admin/tasks` — list all tasks, including drafts and archived tasks
+- `POST /api/v1/admin/tasks` — create a draft task and version 1 with trusted tests
+- `PATCH /api/v1/admin/tasks/{task_id}` — update descriptive metadata
+- `POST /api/v1/admin/tasks/{task_id}/versions` — create the next immutable test-suite version
+- `POST /api/v1/admin/tasks/{task_id}/versions/{version_id}/publish` — publish and activate a version
+- `POST /api/v1/admin/tasks/{task_id}/archive` — archive a task
+
+New accounts are never administrators by default. After registering an operator account, an operator with database access can explicitly grant administrator access inside the API container:
+
+```bash
+docker compose exec api python -m app.promote_admin developer@example.com
+```
+
+Task version test cases are immutable through the API: create a new version to change the function contract or trusted tests. Evaluation history stores `task_version_id`; pre-Stage-7 records remain unversioned and are not retroactively assigned a version.
+
+See [docs/stage-7-plan.md](docs/stage-7-plan.md) for the milestone plan.
+
 ## Evaluation history
 
 - `GET /api/v1/evaluations?limit=20&offset=0` — list the authenticated user's records
