@@ -29,7 +29,7 @@ def health() -> dict[str, str]:
 
 
 @app.get("/api/v1/tasks", tags=["evaluations"])
-def list_tasks() -> list[dict[str, str]]:
+def list_tasks() -> list[dict[str, str | int]]:
     return [{"task_id": task.task_id, "function_name": task.function_name,
              "test_case_count": len(task.test_cases)} for task in (get_task(key) for key in sorted(TASKS))]
 
