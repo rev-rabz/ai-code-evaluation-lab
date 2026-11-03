@@ -1,3 +1,5 @@
+import base64
+import json
 import resource
 import runpy
 import sys
@@ -13,6 +15,7 @@ resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
 output = Path("/output")
 stdout_path = output / "stdout.txt"
 stderr_path = output / "stderr.txt"
+exit_code = 0
 
 with stdout_path.open("w", encoding="utf-8") as stdout_file:
     with stderr_path.open("w", encoding="utf-8") as stderr_file:
@@ -21,8 +24,21 @@ with stdout_path.open("w", encoding="utf-8") as stdout_file:
         try:
             runpy.run_path("/workspace/submission.py", run_name="__main__")
         except SystemExit as exc:
-            code = exc.code if isinstance(exc.code, int) else 1
-            sys.exit(code)
+            if exc.code is None:
+                exit_code = 0
+            elif isinstance(exc.code, int):
+                exit_code = exc.code
+            else:
+                exit_code = 1
         except BaseException:
             traceback.print_exc(file=stderr_file)
-            sys.exit(1)
+            exit_code = 1
+
+sys.stdout = sys.__stdout__
+sys.stderr = sys.__stderr__
+result = {
+    "stdout": base64.b64encode(stdout_path.read_bytes()[:16_384]).decode("ascii"),
+    "stderr": base64.b64encode(stderr_path.read_bytes()[:16_384]).decode("ascii"),
+}
+print("__EVAL_RESULT__" + json.dumps(result), flush=True)
+sys.exit(exit_code)
