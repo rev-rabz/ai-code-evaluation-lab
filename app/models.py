@@ -32,7 +32,12 @@ class Task(Base):
     active_version_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+        nullable=False,
+    )
 
 
 class TaskVersion(Base):
@@ -40,7 +45,9 @@ class TaskVersion(Base):
     __table_args__ = (UniqueConstraint("task_id", "version", name="uq_task_versions_task_version"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    task_id: Mapped[str] = mapped_column(String(100), ForeignKey("tasks.task_id", ondelete="CASCADE"), nullable=False, index=True)
+    task_id: Mapped[str] = mapped_column(
+        String(100), ForeignKey("tasks.task_id", ondelete="CASCADE"), nullable=False, index=True
+    )
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     function_name: Mapped[str] = mapped_column(String(80), nullable=False)
     test_cases: Mapped[list] = mapped_column(JSON, nullable=False)
@@ -57,7 +64,9 @@ class EvaluationRecord(Base):
         Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=False
     )
     task_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
-    task_version_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("task_versions.id", ondelete="SET NULL"), nullable=True)
+    task_version_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("task_versions.id", ondelete="SET NULL"), nullable=True
+    )
     language: Mapped[str] = mapped_column(String(30), nullable=False)
     source_code: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
