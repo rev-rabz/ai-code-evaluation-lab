@@ -45,7 +45,7 @@ def test_candidate_entrypoint_reports_submission_exceptions():
     source = "def add(a, b):\n    raise RuntimeError('candidate failed')\n"
     env = {
         **os.environ,
-        "EVAL_SOURCE_B64": base64.b64encode(source.encode()).decode(),
+        "EVAL_SOURCE_B64": base64.b64encode(json.dumps(source).encode()).decode(),
         "EVAL_ARGS_B64": base64.b64encode(b"[1, 2]").decode(),
         "EVAL_FUNCTION_NAME": "add",
     }
