@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ai-code-evaluation-lab"
-version = "0.4.0"
+version = "0.6.0"
 description = "A FastAPI platform for structured code submission evaluation."
 readme = "README.md"
 requires-python = ">=3.11"
