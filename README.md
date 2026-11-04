@@ -277,6 +277,19 @@ pytest
 ruff check .
 ```
 
+## API hardening and observability (Stage 9)
+
+Stage 9 adds Redis-backed request limits, health probes, request IDs, structured request logs, security response headers, and Prometheus metrics.
+
+Docker Compose starts Redis for ephemeral rate-limit counters. Initial limits are 5 registrations per hour per client IP, 10 login attempts per minute per client IP, 30 evaluation submissions per hour per user, and 5 AI-review requests per hour per user. Rate-limited endpoints fail closed with HTTP 503 if Redis is unavailable. Redis is not a system of record; PostgreSQL remains authoritative for evaluation and review data.
+
+- `GET /health/live` — process liveness without dependency checks.
+- `GET /health/ready` — readiness check for PostgreSQL and Redis.
+- `GET /metrics` — Prometheus metrics; disabled with 404 unless `METRICS_TOKEN` is configured, then requires a bearer token.
+- Every HTTP response includes an `X-Request-ID`; structured logs include route template, status and duration, but never request bodies, source code, headers, query strings or client IP addresses.
+
+See [docs/stage-9-plan.md](docs/stage-9-plan.md) for details and limits.
+
 ## Roadmap
 
 - [x] API skeleton, schemas, syntax checks, and initial CI
@@ -287,7 +300,8 @@ ruff check .
 - [x] Separate candidate execution from trusted grading data (Stage 6)
 - [x] Database-backed task management, administrator controls, and immutable trusted test-suite versions (Stage 7; see `docs/stage-7-plan.md`)
 - [ ] Optional AI-generated review with evidence-linked findings (Stage 8 — Ollama local provider and optional OpenAI provider implemented; awaiting local integration verification and review)
-- [ ] Rate limiting, monitoring, and reviewer dashboard
+- [x] API rate limiting, health probes, request IDs, structured logs, and Prometheus metrics (Stage 9; see `docs/stage-9-plan.md`)
+- [ ] Reviewer dashboard
 - [ ] Stronger execution isolation and independent security review
 
 ## License
