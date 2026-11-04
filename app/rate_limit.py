@@ -36,7 +36,7 @@ def get_redis() -> Redis:
 
 def _rate_limit_key(scope: str, identity: str, window_seconds: int, now: float | None = None) -> str:
     secret = os.getenv("RATE_LIMIT_KEY_SECRET") or os.getenv("JWT_SECRET") or "development-only-rate-limit-key"
-    digest = hmac.new(secret.encode("utf-8"), f"{scope}:{identity}".encode("utf-8"), hashlib.sha256).hexdigest()
+    digest = hmac.new(secret.encode(), f"{scope}:{identity}".encode(), hashlib.sha256).hexdigest()
     bucket = int((time.time() if now is None else now) // window_seconds)
     return f"rate-limit:{scope}:{digest}:{bucket}"
 
