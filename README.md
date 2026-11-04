@@ -254,7 +254,7 @@ For higher-risk multi-tenant workloads, use a stronger isolation boundary such a
 
 The legacy `test_results` request field is retained temporarily for compatibility, but is ignored for scoring. Only server-registered test cases are sent to the private runner. The API validates the runner's test report and calculates the score itself. The first registered task is `python.add`, with five fixed test cases. The runner keeps expected values and the complete test suite outside candidate containers, starts a fresh candidate container for each test case, and compares returned values in the trusted runner process. A candidate receives only its source, function name, and the current case's arguments. This closes the earlier same-process test-harness tampering weakness, but it is not cheat-proof or production-grade sandboxing.
 
-Stage 5 adds authentication and record ownership, but does not yet include email verification, password reset, refresh tokens, token revocation/logout, account deletion, or rate limiting. Protect registration and login with edge/API rate limits before public deployment. JWT access tokens remain valid until expiry if stolen.
+Authentication includes registration, login, per-user record ownership, and Stage 9 Redis-backed endpoint rate limits. It does not yet include email verification, password reset, refresh tokens, token revocation/logout, or account deletion. JWT access tokens remain valid until expiry if stolen.
 
 ## API
 
@@ -299,7 +299,7 @@ See [docs/stage-9-plan.md](docs/stage-9-plan.md) for details and limits.
 - [x] Authentication, bearer tokens, and per-user evaluation ownership
 - [x] Separate candidate execution from trusted grading data (Stage 6)
 - [x] Database-backed task management, administrator controls, and immutable trusted test-suite versions (Stage 7; see `docs/stage-7-plan.md`)
-- [ ] Optional AI-generated review with evidence-linked findings (Stage 8 — Ollama local provider and optional OpenAI provider implemented; awaiting local integration verification and review)
+- [x] Optional AI-generated review with evidence-linked findings (Stage 8 — local Ollama default and optional OpenAI provider)
 - [x] API rate limiting, health probes, request IDs, structured logs, and Prometheus metrics (Stage 9; see `docs/stage-9-plan.md`)
 - [ ] Reviewer dashboard
 - [ ] Stronger execution isolation and independent security review
