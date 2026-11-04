@@ -152,5 +152,5 @@ def test_request_id_and_security_headers_are_returned(caplog):
     assert response.headers["Referrer-Policy"] == "no-referrer"
     assert "do-not-log-this" not in caplog.text
 
-    events = [json.loads(line) for line in caplog.text.splitlines() if line.startswith("{")]
+    events = [json.loads(record.getMessage()) for record in caplog.records if record.name == "app.request"]
     assert any(event["event"] == "http_request" and event["route"] == "/health/live" for event in events)
