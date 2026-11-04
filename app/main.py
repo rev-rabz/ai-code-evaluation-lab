@@ -96,7 +96,13 @@ def metrics(authorization: str | None = Header(default=None)) -> Response:
     return Response(content=generate_latest(), headers={"Content-Type": CONTENT_TYPE_LATEST})
 
 
-@app.post("/api/v1/auth/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED, tags=["auth"], dependencies=[Depends(ip_rate_limit("auth_register", 5, 3600))])
+@app.post(
+    "/api/v1/auth/register",
+    response_model=UserResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["auth"],
+    dependencies=[Depends(ip_rate_limit("auth_register", 5, 3600))],
+)
 def register(request: RegisterRequest, db: Session = Depends(get_db)) -> UserResponse:
     email = str(request.email).lower()
     if db.scalar(select(User).where(User.email == email)):
@@ -112,7 +118,12 @@ def register(request: RegisterRequest, db: Session = Depends(get_db)) -> UserRes
     return user
 
 
-@app.post("/api/v1/auth/login", response_model=TokenResponse, tags=["auth"], dependencies=[Depends(ip_rate_limit("auth_login", 10, 60))])
+@app.post(
+    "/api/v1/auth/login",
+    response_model=TokenResponse,
+    tags=["auth"],
+    dependencies=[Depends(ip_rate_limit("auth_login", 10, 60))],
+)
 def login(request: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse:
     email = str(request.email).lower()
     user = db.scalar(select(User).where(User.email == email))
@@ -134,7 +145,12 @@ def read_current_user(current_user: User = Depends(get_current_user)) -> UserRes
     return current_user
 
 
-@app.post("/api/v1/evaluations", response_model=EvaluationResponse, tags=["evaluations"], dependencies=[Depends(user_rate_limit("evaluation_create", 30, 3600))])
+@app.post(
+    "/api/v1/evaluations",
+    response_model=EvaluationResponse,
+    tags=["evaluations"],
+    dependencies=[Depends(user_rate_limit("evaluation_create", 30, 3600))],
+)
 def create_evaluation(
     request: EvaluationRequest,
     db: Session = Depends(get_db),
