@@ -7,6 +7,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.ai_review_routes import router as ai_review_router
 from app.auth import ACCESS_TOKEN_MINUTES, create_access_token, get_current_user, hash_password, verify_password
 from app.auth_schemas import LoginRequest, RegisterRequest, TokenResponse, UserResponse
 from app.database import get_db
@@ -225,3 +226,4 @@ def get_evaluation(
 
 
 app.include_router(task_router)
+app.include_router(ai_review_router)
