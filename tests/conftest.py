@@ -7,6 +7,7 @@ from app.auth import get_current_user, hash_password
 from app.database import Base, get_db
 from app.main import app
 from app.models import Task, TaskVersion, User
+from app.rate_limit import get_redis
 
 
 @pytest.fixture(autouse=True)
@@ -18,6 +19,21 @@ def isolate_database():
     )
     TestingSessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
     Base.metadata.create_all(bind=engine)
+    class TestRedis:
+        def __init__(self):
+            self.counts = {}
+
+        def eval(self, script, number_of_keys, key, window_seconds):
+            count = self.counts.get(key, 0) + 1
+            self.counts[key] = count
+            return [count, window_seconds]
+
+        def ping(self):
+            return True
+
+    test_redis = TestRedis()
+    app.dependency_overrides[get_redis] = lambda: test_redis
+
     db = TestingSessionLocal()
     test_user = User(id=1, email="owner@example.com", hashed_password=hash_password("Correct-Owner-Password-2026!"))
     db.add(test_user)
