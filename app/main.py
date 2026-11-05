@@ -20,6 +20,7 @@ from app.history import EvaluationHistoryDetail, EvaluationHistoryItem
 from app.models import EvaluationRecord, User
 from app.observability import install_observability
 from app.rate_limit import get_redis, ip_rate_limit, user_rate_limit
+from app.reviewer_routes import router as reviewer_router
 from app.schemas import EvaluationRequest, EvaluationResponse, TestCaseFeedback
 from app.task_routes import router as task_router
 from app.task_service import get_published_task
@@ -279,3 +280,4 @@ def get_evaluation(
 
 app.include_router(task_router)
 app.include_router(ai_review_router)
+app.include_router(reviewer_router)
