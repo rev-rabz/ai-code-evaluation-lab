@@ -14,6 +14,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(320), nullable=False)
     hashed_password: Mapped[str] = mapped_column(Text, nullable=False)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_reviewer: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
     )
@@ -96,4 +97,41 @@ class AIReview(Base):
     review_json: Mapped[dict] = mapped_column(JSON, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+
+
+class EvaluationAssignment(Base):
+    __tablename__ = "evaluation_assignments"
+    __table_args__ = (UniqueConstraint("evaluation_id", name="uq_evaluation_assignments_evaluation_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    evaluation_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("evaluations.id", ondelete="CASCADE"), nullable=False
+    )
+    reviewer_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    assigned_by_user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    assigned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
+
+
+class EvaluationReview(Base):
+    __tablename__ = "evaluation_reviews"
+    __table_args__ = (UniqueConstraint("evaluation_id", name="uq_evaluation_reviews_evaluation_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    evaluation_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("evaluations.id", ondelete="CASCADE"), nullable=False
+    )
+    reviewer_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    decision: Mapped[str] = mapped_column(String(20), nullable=False)
+    notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC), nullable=False
     )
