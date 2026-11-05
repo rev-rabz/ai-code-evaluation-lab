@@ -189,6 +189,7 @@ def list_review_queue(
             "total_tests": record.total_tests,
             "execution_performed": record.execution_performed,
             "execution_timed_out": record.execution_timed_out,
+            "execution_duration_ms": (record.result_json or {}).get("execution_duration_ms"),
             "created_at": record.created_at,
             "assignment": {
                 "reviewer_id": assignment.reviewer_id,
@@ -248,6 +249,7 @@ def get_review_detail(
         "total_tests": record.total_tests,
         "execution_performed": record.execution_performed,
         "execution_timed_out": record.execution_timed_out,
+        "execution_duration_ms": (record.result_json or {}).get("execution_duration_ms"),
         "created_at": record.created_at,
         "source_code": record.source_code,
         "result": record.result_json,
