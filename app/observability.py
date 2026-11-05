@@ -22,6 +22,16 @@ request_logger = logging.getLogger("app.request")
 
 
 def install_observability(app: FastAPI) -> None:
+    # Uvicorn configures its own loggers but may leave the root logger at WARNING
+    # with no handler. Configure a root stream so app.request INFO events reach
+    # the container logs, while preserving any handler installed by the host.
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    if not root_logger.handlers:
+        stream_handler = logging.StreamHandler()
+        stream_handler.setFormatter(logging.Formatter("%(message)s"))
+        root_logger.addHandler(stream_handler)
+
     @app.middleware("http")
     async def request_observability(request: Request, call_next):
         request_id = uuid.uuid4().hex
