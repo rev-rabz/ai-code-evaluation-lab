@@ -138,14 +138,22 @@ def test_admin_can_assign_and_reviewer_can_review_only_assigned_evaluations():
 
 def test_reviewer_cannot_see_unassigned_or_another_reviewers_evaluations():
     _add_reviewer()
-    _add_evaluation()
-    _reviewer_override()
+    _add_reviewer(user_id=3, email="other-reviewer@example.com")
+    _add_evaluation(1)
+    _add_evaluation(2)
+    _admin_override()
+    assert client.put(
+        "/api/v1/admin/evaluations/1/assignment",
+        json={"reviewer_id": 3},
+    ).status_code == 200
 
+    _reviewer_override()
     queue = client.get("/api/v1/reviewer/evaluations")
     assert queue.status_code == 200
     assert queue.json()["items"] == []
     assert queue.json()["total"] == 0
     assert client.get("/api/v1/reviewer/evaluations/1").status_code == 404
+    assert client.get("/api/v1/reviewer/evaluations/2").status_code == 404
     assert client.put(
         "/api/v1/reviewer/evaluations/1/review",
         json={"decision": "flagged", "notes": "Not assigned to me."},
@@ -203,5 +211,39 @@ def test_invalid_human_review_decision_is_rejected():
     response = client.put(
         "/api/v1/reviewer/evaluations/1/review",
         json={"decision": "maybe", "notes": ""},
+    )
+    assert response.status_code == 422
+
+
+
+def test_reviewer_dashboard_page_and_assets_are_served_with_security_headers():
+    page = client.get("/reviewer")
+    assert page.status_code == 200
+    assert "Reviewer workspace" in page.text
+    assert "Content-Security-Policy" in page.headers
+    assert "script-src 'self'" in page.headers["Content-Security-Policy"]
+    assert page.headers["Cache-Control"] == "no-store"
+    assert page.headers["X-Frame-Options"] == "DENY"
+
+    script = client.get("/static/reviewer.js")
+    stylesheet = client.get("/static/reviewer.css")
+    assert script.status_code == 200
+    assert "localStorage" not in script.text
+    assert "sessionStorage" not in script.text
+    assert stylesheet.status_code == 200
+
+
+def test_review_notes_over_limit_are_rejected():
+    _add_reviewer()
+    _add_evaluation()
+    _admin_override()
+    assert client.put(
+        "/api/v1/admin/evaluations/1/assignment",
+        json={"reviewer_id": 2},
+    ).status_code == 200
+    _reviewer_override()
+    response = client.put(
+        "/api/v1/reviewer/evaluations/1/review",
+        json={"decision": "flagged", "notes": "x" * 4001},
     )
     assert response.status_code == 422
