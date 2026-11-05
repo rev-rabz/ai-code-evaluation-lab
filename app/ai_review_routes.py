@@ -14,6 +14,7 @@ from app.ai_review_service import (
 from app.auth import get_current_user
 from app.database import get_db
 from app.models import AIReview, EvaluationRecord, Task, TaskVersion, User
+from app.rate_limit import user_rate_limit
 
 router = APIRouter(tags=["AI reviews"])
 
@@ -81,6 +82,7 @@ def _evaluation_context(db: Session, record: EvaluationRecord) -> dict:
     "/api/v1/evaluations/{evaluation_id}/review",
     response_model=AIReviewResponse,
     status_code=status.HTTP_200_OK,
+    dependencies=[Depends(user_rate_limit("ai_review", 5, 3600))],
 )
 def create_or_get_ai_review(
     evaluation_id: int,

@@ -1,4 +1,14 @@
 services:
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
   db:
     image: postgres:16-alpine
     environment:
@@ -23,6 +33,9 @@ services:
       RUNNER_URL: http://runner:8001
       RUNNER_TOKEN: ${RUNNER_TOKEN:?Set RUNNER_TOKEN in your environment}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in your environment}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      RATE_LIMIT_KEY_SECRET: ${RATE_LIMIT_KEY_SECRET:-}
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
       AI_REVIEW_PROVIDER: ${AI_REVIEW_PROVIDER:-ollama}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       OLLAMA_REVIEW_MODEL: ${OLLAMA_REVIEW_MODEL:-qwen3.5:4b}
@@ -34,6 +47,8 @@ services:
       - "8000:8000"
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       runner:
         condition: service_started

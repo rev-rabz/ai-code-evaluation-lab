@@ -1,10 +1,14 @@
+import hmac
 import os
 
 import httpx
-from fastapi import Depends, FastAPI, HTTPException, Query, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
+from fastapi.responses import Response
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import ValidationError
-from sqlalchemy import desc, select
-from sqlalchemy.exc import IntegrityError
+from redis.exceptions import RedisError
+from sqlalchemy import desc, select, text
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.ai_review_routes import router as ai_review_router
@@ -14,6 +18,8 @@ from app.database import get_db
 from app.evaluator import evaluate_submission
 from app.history import EvaluationHistoryDetail, EvaluationHistoryItem
 from app.models import EvaluationRecord, User
+from app.observability import install_observability
+from app.rate_limit import get_redis, ip_rate_limit, user_rate_limit
 from app.schemas import EvaluationRequest, EvaluationResponse, TestCaseFeedback
 from app.task_routes import router as task_router
 from app.task_service import get_published_task
@@ -21,8 +27,9 @@ from app.task_service import get_published_task
 app = FastAPI(
     title="AI Code Evaluation Lab",
     description="Inspect Python submissions and evaluate them against server-owned tests in an isolated runner.",
-    version="0.5.0",
+    version="0.6.0",
 )
+install_observability(app)
 
 EXECUTION_OUTPUT_LIMIT_BYTES = 16_384
 RUNNER_REQUEST_TIMEOUT_SECONDS = 40.0
@@ -56,11 +63,46 @@ def _persist_evaluation(
 
 
 @app.get("/health", tags=["system"])
+@app.get("/health/live", tags=["system"])
 def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.post("/api/v1/auth/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED, tags=["auth"])
+@app.get("/health/ready", tags=["system"])
+def readiness(
+    db: Session = Depends(get_db),
+    redis_client=Depends(get_redis),
+) -> dict[str, object]:
+    try:
+        db.execute(text("SELECT 1"))
+        redis_client.ping()
+    except (SQLAlchemyError, RedisError, OSError):
+        raise HTTPException(status_code=503, detail="Service dependencies are unavailable.") from None
+    return {"status": "ok", "dependencies": {"database": "ok", "redis": "ok"}}
+
+
+@app.get("/metrics", tags=["system"], include_in_schema=False)
+def metrics(authorization: str | None = Header(default=None)) -> Response:
+    token = os.getenv("METRICS_TOKEN", "").strip()
+    if not token:
+        raise HTTPException(status_code=404, detail="Not found.")
+    supplied = authorization.removeprefix("Bearer ") if authorization else ""
+    if not hmac.compare_digest(supplied, token):
+        raise HTTPException(
+            status_code=401,
+            detail="Metrics authentication is required.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return Response(content=generate_latest(), headers={"Content-Type": CONTENT_TYPE_LATEST})
+
+
+@app.post(
+    "/api/v1/auth/register",
+    response_model=UserResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["auth"],
+    dependencies=[Depends(ip_rate_limit("auth_register", 5, 3600))],
+)
 def register(request: RegisterRequest, db: Session = Depends(get_db)) -> UserResponse:
     email = str(request.email).lower()
     if db.scalar(select(User).where(User.email == email)):
@@ -76,7 +118,12 @@ def register(request: RegisterRequest, db: Session = Depends(get_db)) -> UserRes
     return user
 
 
-@app.post("/api/v1/auth/login", response_model=TokenResponse, tags=["auth"])
+@app.post(
+    "/api/v1/auth/login",
+    response_model=TokenResponse,
+    tags=["auth"],
+    dependencies=[Depends(ip_rate_limit("auth_login", 10, 60))],
+)
 def login(request: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse:
     email = str(request.email).lower()
     user = db.scalar(select(User).where(User.email == email))
@@ -98,7 +145,12 @@ def read_current_user(current_user: User = Depends(get_current_user)) -> UserRes
     return current_user
 
 
-@app.post("/api/v1/evaluations", response_model=EvaluationResponse, tags=["evaluations"])
+@app.post(
+    "/api/v1/evaluations",
+    response_model=EvaluationResponse,
+    tags=["evaluations"],
+    dependencies=[Depends(user_rate_limit("evaluation_create", 30, 3600))],
+)
 def create_evaluation(
     request: EvaluationRequest,
     db: Session = Depends(get_db),

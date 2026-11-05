@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ai-code-evaluation-lab"
-version = "0.4.0"
+version = "0.6.0"
 description = "A FastAPI platform for structured code submission evaluation."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -15,8 +15,10 @@ dependencies = [
   "email-validator>=2.1,<3.0",
   "fastapi>=0.115,<1.0",
   "httpx>=0.27,<1.0",
+  "prometheus-client>=0.20,<1.0",
   "PyJWT>=2.9,<3.0",
   "pwdlib>=0.2,<1.0",
+  "redis>=5.0,<7.0",
   "sqlalchemy>=2.0,<3.0",
   "psycopg[binary]>=3.2,<4.0",
   "uvicorn[standard]>=0.30,<1.0",

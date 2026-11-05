@@ -254,7 +254,7 @@ For higher-risk multi-tenant workloads, use a stronger isolation boundary such a
 
 The legacy `test_results` request field is retained temporarily for compatibility, but is ignored for scoring. Only server-registered test cases are sent to the private runner. The API validates the runner's test report and calculates the score itself. The first registered task is `python.add`, with five fixed test cases. The runner keeps expected values and the complete test suite outside candidate containers, starts a fresh candidate container for each test case, and compares returned values in the trusted runner process. A candidate receives only its source, function name, and the current case's arguments. This closes the earlier same-process test-harness tampering weakness, but it is not cheat-proof or production-grade sandboxing.
 
-Stage 5 adds authentication and record ownership, but does not yet include email verification, password reset, refresh tokens, token revocation/logout, account deletion, or rate limiting. Protect registration and login with edge/API rate limits before public deployment. JWT access tokens remain valid until expiry if stolen.
+Authentication includes registration, login, per-user record ownership, and Stage 9 Redis-backed endpoint rate limits. It does not yet include email verification, password reset, refresh tokens, token revocation/logout, or account deletion. JWT access tokens remain valid until expiry if stolen.
 
 ## API
 
@@ -277,6 +277,19 @@ pytest
 ruff check .
 ```
 
+## API hardening and observability (Stage 9)
+
+Stage 9 adds Redis-backed request limits, health probes, request IDs, structured request logs, security response headers, and Prometheus metrics.
+
+Docker Compose starts Redis for ephemeral rate-limit counters. Initial limits are 5 registrations per hour per client IP, 10 login attempts per minute per client IP, 30 evaluation submissions per hour per user, and 5 AI-review requests per hour per user. Rate-limited endpoints fail closed with HTTP 503 if Redis is unavailable. Redis is not a system of record; PostgreSQL remains authoritative for evaluation and review data.
+
+- `GET /health/live` — process liveness without dependency checks.
+- `GET /health/ready` — readiness check for PostgreSQL and Redis.
+- `GET /metrics` — Prometheus metrics; disabled with 404 unless `METRICS_TOKEN` is configured, then requires a bearer token.
+- Every HTTP response includes an `X-Request-ID`; structured logs include route template, status and duration, but never request bodies, source code, headers, query strings or client IP addresses.
+
+See [docs/stage-9-plan.md](docs/stage-9-plan.md) for details and limits.
+
 ## Roadmap
 
 - [x] API skeleton, schemas, syntax checks, and initial CI
@@ -286,8 +299,9 @@ ruff check .
 - [x] Authentication, bearer tokens, and per-user evaluation ownership
 - [x] Separate candidate execution from trusted grading data (Stage 6)
 - [x] Database-backed task management, administrator controls, and immutable trusted test-suite versions (Stage 7; see `docs/stage-7-plan.md`)
-- [ ] Optional AI-generated review with evidence-linked findings (Stage 8 — Ollama local provider and optional OpenAI provider implemented; awaiting local integration verification and review)
-- [ ] Rate limiting, monitoring, and reviewer dashboard
+- [x] Optional AI-generated review with evidence-linked findings (Stage 8 — local Ollama default and optional OpenAI provider)
+- [x] API rate limiting, health probes, request IDs, structured logs, and Prometheus metrics (Stage 9; see `docs/stage-9-plan.md`)
+- [ ] Reviewer dashboard
 - [ ] Stronger execution isolation and independent security review
 
 ## License
