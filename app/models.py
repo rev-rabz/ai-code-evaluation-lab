@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import CheckConstraint, JSON, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -119,7 +119,10 @@ class EvaluationAssignment(Base):
 
 class EvaluationReview(Base):
     __tablename__ = "evaluation_reviews"
-    __table_args__ = (UniqueConstraint("evaluation_id", name="uq_evaluation_reviews_evaluation_id"),)
+    __table_args__ = (
+        UniqueConstraint("evaluation_id", name="uq_evaluation_reviews_evaluation_id"),
+        CheckConstraint("decision IN ('approved', 'needs_changes', 'flagged')", name="ck_evaluation_reviews_decision"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     evaluation_id: Mapped[int] = mapped_column(
