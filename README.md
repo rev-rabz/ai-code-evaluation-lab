@@ -1,239 +1,147 @@
 # AI Code Evaluation Lab
 
-A Python/FastAPI platform for inspecting code submissions, running trusted tests in disposable Docker containers, and retaining private evaluation history for registered users.
+**A Python code-evaluation platform with isolated execution, trusted test scoring, and optional AI-assisted code review.**
 
-> **Execution status:** The API never evaluates submitted code inside its own process. When execution is requested, it forwards source to a separate internal runner service. The runner launches a fresh container with no network, a read-only root filesystem, a non-root user, dropped Linux capabilities, resource limits, and automatic cleanup.
+AI Code Evaluation Lab is a backend engineering project built with FastAPI. It accepts Python submissions, performs static inspection, executes registered tasks in disposable Docker containers, calculates scores using server-controlled tests, and provides authenticated evaluation history and a reviewer workspace.
 
-## Features
+> **Release:** v1.0.0  
+> **Project status:** Locally operated portfolio project. It is not presented as a publicly hosted or production-hardened multi-tenant service.
 
-- FastAPI endpoint for Python submissions
-- Python syntax validation and basic static analysis
-- Server-owned Python task catalogue and trusted test feedback
-- Server-calculated scores from tests executed in the isolated runner
-- Persistent PostgreSQL evaluation history (SQLite for local development)
-- Account registration and login with Argon2 password hashing
-- Short-lived signed bearer tokens (JWT)
-- Authenticated submissions and user-scoped history/detail endpoints
-- Alembic schema migrations
-- Per-run timeout, memory, CPU, process, file-size, and output limits
-- Pytest and Ruff checks in GitHub Actions
-- Optional AI-generated code reviews with source-line evidence and user-scoped persistence
-- Internal reviewer dashboard with assignment-scoped access and human review decisions
+[![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-API-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Database-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![Docker](https://img.shields.io/badge/Docker-Isolated%20execution-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-## Stack
+## What it does
 
-- Python 3.11+
-- FastAPI, Pydantic, HTTPX
-- SQLAlchemy and Alembic
-- PostgreSQL / SQLite
-- Argon2 password hashing and PyJWT
-- Docker Engine and Docker SDK for Python
-- Pytest and Ruff
+A user submits Python source code against a published task. The API validates and inspects the submission, then—when execution is requested—sends it to a private runner. The runner starts a fresh restricted container for each test case. Trusted test expectations stay outside the candidate container, and the API calculates the final score from validated runner results.
 
-## Run locally
+AI review is a separate, optional workflow. It provides advisory feedback with source-line evidence; it does not execute generated code or alter trusted test scores.
 
-```bash
-python -m venv .venv
-# Windows: .venv\Scripts\activate
-# macOS/Linux: source .venv/bin/activate
-python -m pip install -e ".[dev,runner]"
+## Highlights
+
+- **Code submission and inspection:** Python syntax validation and basic static analysis.
+- **Trusted evaluation:** Published server-managed tasks and immutable test-suite versions.
+- **Isolated execution:** Disposable candidate containers with network access disabled and resource limits.
+- **Server-side scoring:** The API validates execution reports and calculates scores from trusted test outcomes.
+- **Accounts and history:** Registration, login, short-lived JWT access tokens, and user-scoped evaluation records.
+- **AI-assisted review:** Optional local Ollama provider or explicitly configured OpenAI provider.
+- **Reviewer workspace:** Assignment-scoped queues, submission inspection, and independent human review decisions.
+- **Operational safeguards:** Redis-backed rate limits, health probes, request IDs, structured logs, and optional Prometheus metrics.
+
+## Architecture
+
+```mermaid
+flowchart TD
+    U[User / Reviewer] --> API[FastAPI application]
+    API --> DB[(PostgreSQL)]
+    API --> R[(Redis)]
+    API --> TASK[Task catalogue and trusted tests]
+    API --> RUNNER[Private runner service]
+    RUNNER --> C1[Disposable candidate container]
+    RUNNER --> C2[Disposable candidate container]
+    API -. optional review .-> AI[Ollama or OpenAI provider]
+    API --> UI[Reviewer dashboard]
 ```
 
-Set the required environment variables before starting the API:
+The API owns authentication, task definitions, trusted test expectations, persistence, validation, and scoring. The runner executes candidate code and returns results; candidate containers do not receive the full test suite or expected values.
 
-- `JWT_SECRET`: a long random signing secret
-- `RUNNER_URL` and `RUNNER_TOKEN`: required only for code execution
-- `DATABASE_URL`: optional; defaults to SQLite at `./data/evaluations.db`
+## Technology
 
-Generate a secret with:
+| Area | Technologies |
+|---|---|
+| Language and API | Python 3.11+, FastAPI, Pydantic |
+| Persistence | PostgreSQL, SQLAlchemy, Alembic |
+| Supporting services | Redis |
+| Execution | Docker Engine, Docker SDK, Docker Compose |
+| Authentication | JWT, Argon2 password hashing |
+| AI review | Ollama (local default), optional OpenAI provider |
+| Quality | Pytest, Ruff, GitHub Actions |
 
-```bash
-python -c "import secrets; print(secrets.token_urlsafe(48))"
-```
+## Main workflows
 
-Apply database migrations and start the API:
+### 1. Submit and evaluate code
 
-```bash
-alembic upgrade head
-uvicorn app.main:app --reload
-```
+1. An authenticated user selects a published task.
+2. The API validates the request and performs static inspection.
+3. If execution is enabled, the API sends the source and registered test inputs to the private runner.
+4. The runner executes each test case in a fresh restricted container.
+5. The API validates the report, calculates the score, and stores the evaluation.
+6. The user can retrieve their evaluation history and detailed results.
 
-The API is available at http://127.0.0.1:8000 and its docs at http://127.0.0.1:8000/docs.
+The first registered task is `python.add`, with five fixed test cases. The public task catalogue does not expose expected test values.
 
-## Run the Docker execution stack
+### 2. Request an AI review
 
-Requirements: Docker Engine with Compose v2. The runner requires access to the host Docker socket to create per-submission containers.
+AI review is explicitly requested and separate from test execution. The review contains a summary, strengths, actionable findings, and next steps. Findings include source line ranges and quoted excerpts that the API checks against the saved submission.
 
-1. Copy `.env.example` to `.env`.
-2. Generate three independent random values for `RUNNER_TOKEN`, `POSTGRES_PASSWORD`, and `JWT_SECRET`.
-3. Start the stack:
+- **Ollama:** The default provider runs locally on the developer's machine.
+- **OpenAI:** An optional provider can be configured with an API key. Source code is sent to the provider only when a user explicitly requests a review with that provider selected.
+
+AI feedback is advisory and never changes trusted scores or test outcomes.
+
+### 3. Review submissions
+
+The reviewer workspace is available at `/reviewer`. Administrators can assign and reassign submissions. Reviewers see only evaluations assigned to them; administrators can inspect all evaluations. Human decisions are stored separately from AI reviews and automated test results.
+
+## Local setup
+
+### Requirements
+
+- Python 3.11 or newer
+- Docker Engine with Docker Compose v2 for the full execution stack
+- Git
+
+### Run the application with Docker Compose
+
+1. Clone the repository and enter the project directory.
+2. Create a local environment file from the example:
 
    ```bash
-   docker compose --env-file .env up --build
+   cp .env.example .env
    ```
 
-The API is exposed on port 8000. PostgreSQL stores evaluation history in a named Docker volume. The API container applies Alembic migrations before starting. The runner is not published to the host; it is reachable only on the Compose network and requires the shared bearer token.
+   On Windows PowerShell, use `Copy-Item .env.example .env`.
 
-Do not use `docker compose down -v` unless you intend to delete the PostgreSQL volume and all saved evaluation history.
+3. Set independent, strong values for `POSTGRES_PASSWORD`, `JWT_SECRET`, and `RUNNER_TOKEN` in `.env`. Do not commit this file.
+4. Start the services:
 
-## Authentication
-
-Register an account:
-
-```http
-POST /api/v1/auth/register
-Content-Type: application/json
-
-{"email":"developer@example.com","password":"a-long-unique-password"}
-```
-
-Passwords must be at least 12 characters. The API stores an Argon2 password hash, never the submitted password.
-
-Log in:
-
-```http
-POST /api/v1/auth/login
-Content-Type: application/json
-
-{"email":"developer@example.com","password":"a-long-unique-password"}
-```
-
-The response contains a bearer access token valid for 30 minutes. Send it on protected requests:
-
-```http
-Authorization: Bearer <access_token>
-```
-
-Use `GET /api/v1/auth/me` to retrieve the authenticated account. Evaluation submission and history endpoints require authentication. A user can only list or retrieve their own evaluation records; another user's record returns 404.
-
-## Execute a submission
-
-Send a POST request to `/api/v1/evaluations` with a valid bearer token:
-
-```json
-{
-  "language": "python",
-  "source_code": "def add(a, b): return a + b",
-  "task_id": "python.add",
-  "execute": true
-}
-```
-
-The response includes `execution_performed`, `execution_exit_code`, `execution_timed_out`, `execution_duration_ms`, `stdout`, `stderr`, trusted test feedback, and a score calculated by the API. List available tasks with public `GET /api/v1/tasks`.
-
-Set `execute` to false (the default) to perform static inspection only. All new evaluations are associated with the authenticated account.
-
-## Task management (Stage 7)
-
-The public task catalogue contains published, non-archived tasks only:
-
-- `GET /api/v1/tasks` — list published tasks
-- `GET /api/v1/tasks/{task_id}` — task description, instructions, examples, active version, and test names/arguments (expected values are never exposed)
-
-Task administration requires an account with the administrator flag:
-
-- `GET /api/v1/admin/tasks` — list all tasks, including drafts and archived tasks
-- `POST /api/v1/admin/tasks` — create a draft task and version 1 with trusted tests
-- `PATCH /api/v1/admin/tasks/{task_id}` — update descriptive metadata
-- `GET /api/v1/admin/tasks/{task_id}/versions` — inspect version history and trusted test cases
-- `POST /api/v1/admin/tasks/{task_id}/versions` — create the next immutable test-suite version
-- `POST /api/v1/admin/tasks/{task_id}/versions/{version_id}/publish` — publish and activate a version
-- `POST /api/v1/admin/tasks/{task_id}/archive` — archive a task
-
-New accounts are never administrators by default. After registering an operator account, an operator with database access can explicitly grant administrator access inside the API container:
-
-```bash
-docker compose exec api python -m app.promote_admin developer@example.com
-```
-
-Task version test cases are immutable through the API: create a new version to change the function contract or trusted tests. Evaluation history stores `task_version_id`; pre-Stage-7 records remain unversioned and are not retroactively assigned a version.
-
-See [docs/stage-7-plan.md](docs/stage-7-plan.md) for the milestone plan.
-
-## AI code reviews (Stage 8)
-
-AI review is optional and separate from evaluation. It never changes trusted test scores or executes model-generated code.
-
-**The default provider is local Ollama.** This runs the model on your own computer and does not send submitted source code to an external AI API. The first model download requires an internet connection and several GB of disk space; inference then runs locally. The default model is `qwen3.5:4b`.
-
-### Windows + Docker Desktop setup (no API credits)
-
-1. Install Ollama for Windows from [ollama.com/download](https://ollama.com/download).
-2. Open PowerShell on Windows (not inside the API container) and download the model:
-
-   ```powershell
-   ollama pull qwen3.5:4b
-   ollama list
+   ```bash
+   docker compose --env-file .env up --build -d
    ```
 
-3. Ensure the Ollama service is reachable from Docker Desktop. If the API container cannot connect, set the Windows user environment variable `OLLAMA_HOST` to `0.0.0.0:11434`, quit Ollama from the system tray, and reopen it. Ollama's API has no built-in authentication: do not expose port 11434 to the public internet or untrusted networks, and keep Windows Firewall rules restrictive.
-4. Set these values in your project `.env`:
+5. Check service status and API readiness:
 
-   ```dotenv
-   AI_REVIEW_PROVIDER=ollama
-   OLLAMA_BASE_URL=http://host.docker.internal:11434
-   OLLAMA_REVIEW_MODEL=qwen3.5:4b
+   ```bash
+   docker compose ps
    ```
 
-5. Recreate the API container so it receives the provider settings:
+   Open [http://127.0.0.1:8000/health/ready](http://127.0.0.1:8000/health/ready).
 
-   ```powershell
-   docker compose --env-file .env up -d --force-recreate api
-   ```
+The API is bound to localhost on port 8000. PostgreSQL data is stored in the named `postgres_data` Docker volume. The API applies Alembic migrations during startup. The runner is not published to the host and is reachable through the private Compose network.
 
-6. Confirm Docker can reach Ollama and see the downloaded model:
+> **Data safety:** `docker compose down -v` deletes the PostgreSQL volume and saved evaluation history. Do not use it unless you intentionally want to erase that data.
 
-   ```powershell
-   docker compose exec api python -c "import httpx; r=httpx.get('http://host.docker.internal:11434/api/tags', timeout=10); r.raise_for_status(); print([m['name'] for m in r.json().get('models', [])])"
-   ```
+### Optional AI review with Ollama
 
-If the connection test fails, check that Ollama is running on Windows, that `OLLAMA_HOST` is configured as above, and that Windows Firewall permits the local Docker-to-host connection only.
+The default review provider is local Ollama. Install Ollama on the host, download the configured model, and ensure the API container can reach the host Ollama service. The default model is `qwen3.5:4b`.
 
-### Request and retrieve a review
+Relevant environment settings:
 
-After creating an evaluation, explicitly request a review:
-
-```http
-POST /api/v1/evaluations/{id}/review
-Authorization: Bearer <access_token>
+```dotenv
+AI_REVIEW_PROVIDER=ollama
+OLLAMA_BASE_URL=http://host.docker.internal:11434
+OLLAMA_REVIEW_MODEL=qwen3.5:4b
 ```
 
-Retrieve the saved review:
+Ollama's API has no built-in authentication. Keep it restricted to trusted local access; do not expose it to the public internet or untrusted networks.
 
-```http
-GET /api/v1/evaluations/{id}/review
-Authorization: Bearer <access_token>
-```
+An OpenAI provider is also available by setting `AI_REVIEW_PROVIDER=openai`, `OPENAI_API_KEY`, and optionally `OPENAI_REVIEW_MODEL`. API usage is billed separately from a ChatGPT subscription. Keep credentials in `.env` or a secret manager.
 
-The review includes a summary, strengths, actionable findings, and next steps. Every finding has a 1-based source line range and exact quoted code excerpt; the API rejects findings whose excerpt does not match the stored submission. Repeating the POST returns the existing review rather than making another model request.
+## Reviewer access
 
-### Optional OpenAI provider
-
-OpenAI remains available as an optional alternative. Set `AI_REVIEW_PROVIDER=openai`, `OPENAI_API_KEY`, and optionally `OPENAI_REVIEW_MODEL`. OpenAI API usage is billed separately from a ChatGPT subscription. Keep the key in `.env` or a deployment secret store; never commit it. The application sends source code to OpenAI only when a user explicitly requests a review with this provider selected.
-
-### Privacy and trust boundaries
-
-- With Ollama, submitted source and limited evaluation context are sent from the API container to the Ollama service running on your own machine. They are not sent to an external model API. Downloading model files requires internet access.
-- With OpenAI, submitted source code is sent to the Responses API only after an authenticated user explicitly requests a review. The request uses `store: false`.
-- Expected test values, actual execution output, stdout, and stderr are not sent to either provider.
-- Submitted source is treated as untrusted prompt data. No tools are exposed to the model and no generated code is executed.
-- Every finding must cite source lines and an exact excerpt; the API validates the citation against the saved source.
-- Review output is advisory and never changes trusted scores or test outcomes.
-
-See [docs/stage-8-plan.md](docs/stage-8-plan.md) for scope and trust boundaries.
-
-## Reviewer dashboard (Stage 10)
-
-The first-party reviewer workspace is available at **`/reviewer`** after the API starts. It provides a submission queue, source and trusted-result inspection, static-analysis findings, saved AI-review context, reviewer assignment, and a human decision form. The page and its assets are served by the API; all private data and mutation endpoints require a bearer token.
-
-### Roles and access
-
-- Ordinary users can access only their own evaluation history and AI reviews.
-- Designated reviewers can list and inspect only evaluations currently assigned to them, and can save a human review for those assignments.
-- Administrators can inspect all evaluations, list eligible reviewers, assign/reassign/unassign evaluations, and submit a human review for any evaluation.
-- Reviewer status is separate from administrator status. New accounts and existing accounts are not promoted automatically.
-
-Grant reviewer access to an existing account from the API container:
+Register an account through the API, then grant reviewer access from the API container:
 
 ```bash
 docker compose exec api python -m app.promote_reviewer reviewer@example.com
@@ -245,101 +153,68 @@ Revoke reviewer access:
 docker compose exec api python -m app.promote_reviewer --revoke reviewer@example.com
 ```
 
-The reviewer page keeps its access token in memory only; refreshing the page requires signing in again. Source code, notes, and AI-review text are rendered as text rather than injected HTML. The reviewer page uses a restrictive same-origin content security policy.
+New accounts are not automatically reviewers or administrators. Administrator promotion is a separate, explicit operation.
 
-### Reviewer API
+## API overview
 
-- `GET /api/v1/admin/reviewers` — list accounts eligible for assignments (administrator only)
-- `PUT /api/v1/admin/evaluations/{id}/assignment` — assign, reassign, or unassign an evaluation (administrator only; send `{"reviewer_id": 3}` or `{"reviewer_id": null}`)
-- `GET /api/v1/reviewer/evaluations` — paginated queue; administrators see all, reviewers see only their assignments
-- `GET /api/v1/reviewer/evaluations/{id}` — authorized submission detail, execution results, and AI/human review context
-- `PUT /api/v1/reviewer/evaluations/{id}/review` — save a human decision (`approved`, `needs_changes`, or `flagged`) and optional notes up to 4,000 characters
+| Endpoint | Purpose | Access |
+|---|---|---|
+| `GET /health/live` | Process liveness | Public |
+| `GET /health/ready` | Database and Redis readiness | Public |
+| `GET /api/v1/tasks` | List published tasks | Public |
+| `GET /api/v1/tasks/{task_id}` | Published task details | Public |
+| `POST /api/v1/auth/register` | Register an account | Public, rate limited |
+| `POST /api/v1/auth/login` | Obtain access token | Public, rate limited |
+| `GET /api/v1/auth/me` | Current account | Authenticated |
+| `POST /api/v1/evaluations` | Submit an evaluation | Authenticated |
+| `GET /api/v1/evaluations` | List own evaluations | Authenticated |
+| `GET /api/v1/evaluations/{id}` | Retrieve own evaluation | Authenticated |
+| `POST /api/v1/evaluations/{id}/review` | Request AI review | Authenticated |
+| `GET /api/v1/evaluations/{id}/review` | Retrieve saved AI review | Authenticated |
+| `GET /reviewer` | Reviewer workspace | Role protected |
+| `GET /api/v1/reviewer/evaluations` | Reviewer queue | Reviewer / administrator |
 
-The human review is independent from the AI review and never changes trusted scores or test outcomes. One current human review is stored per evaluation; updating it replaces the current decision and attribution. Existing evaluations start unassigned and remain visible to administrators until assigned.
+Interactive API documentation is available at [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs) while the local API is running.
 
-## Evaluation history
+## Security model and limitations
 
-- `GET /api/v1/evaluations?limit=20&offset=0` — list the authenticated user's records
-- `GET /api/v1/evaluations?task_id=python.add` — filter the authenticated user's records by task
-- `GET /api/v1/evaluations/{id}` — retrieve the authenticated user's full result and source code
+Candidate containers are configured with multiple restrictions:
 
-The migration preserves pre-Stage-5 history rows, but those legacy rows have no account owner and are not exposed through authenticated history endpoints. No automatic ownership assignment is performed.
+- Network disabled and read-only root filesystem
+- Non-root candidate UID/GID
+- Linux capabilities dropped and `no-new-privileges`
+- Memory, CPU, process, timeout, and file-size limits
+- Bounded stdout/stderr capture
+- Fresh container per test case and automatic cleanup
 
-## Sandbox controls
+These controls reduce risk; they do **not** establish a perfect or production-grade security boundary. Containers share the host kernel. The runner service currently has access to the Docker daemon socket, which carries effectively host-level authority. Keep the service private, protect its bearer token, keep the host and Docker patched, and do not expose the runner endpoint publicly.
 
-Each test case gets a new candidate container with:
+This project is intended for local operation and portfolio demonstration. Before accepting arbitrary public or multi-tenant submissions, it would need a stronger isolation boundary (for example, disposable VMs or a purpose-built sandbox runtime), host-level monitoring and quotas, and an independent security assessment.
 
-- Network disabled
-- Read-only container root filesystem
-- Non-root UID/GID 65534
-- All Linux capabilities dropped
-- `no-new-privileges`
-- 128 MiB memory limit and 0.5 CPU quota
-- 32-process limit
-- 5-second per-case wall-clock timeout, 30-second overall execution budget, and CPU ulimits
-- 16 MiB no-exec `/tmp` tmpfs, with bounded in-memory stdout/stderr capture
-- 1 MiB per-file size limit, bounded response output, and forced container cleanup
+Authentication currently includes registration, login, Argon2 password hashing, short-lived JWT access tokens, per-user record ownership, and Redis-backed rate limits. Email verification, password reset, refresh tokens, token revocation/logout, and account deletion are not implemented. A stolen access token remains valid until it expires.
 
-The submitted source and one test case's arguments are passed to a disposable candidate container through bounded environment values. Candidate code runs from memory; it does not receive the expected value or the full test suite. Standard output and standard error are captured in memory with a 16 KiB limit and returned through a bounded result marker.
+## Development and quality checks
 
-## Important security limitations
-
-This is a development-stage isolation layer, **not a claim of perfect or production-grade sandbox security**. Containers share the host kernel; Docker alone is not a complete security boundary. The runner service has access to the Docker daemon socket, which is effectively host-level authority. Keep it private, protect the bearer token, use a dedicated disposable host/VM, keep Docker and the host kernel patched, and do not expose the runner endpoint publicly.
-
-For higher-risk multi-tenant workloads, use a stronger isolation boundary such as dedicated ephemeral VMs or a purpose-built sandbox runtime, add host-level monitoring and quotas, and perform an independent security review before accepting arbitrary public submissions.
-
-The legacy `test_results` request field is retained temporarily for compatibility, but is ignored for scoring. Only server-registered test cases are sent to the private runner. The API validates the runner's test report and calculates the score itself. The first registered task is `python.add`, with five fixed test cases. The runner keeps expected values and the complete test suite outside candidate containers, starts a fresh candidate container for each test case, and compares returned values in the trusted runner process. A candidate receives only its source, function name, and the current case's arguments. This closes the earlier same-process test-harness tampering weakness, but it is not cheat-proof or production-grade sandboxing.
-
-Authentication includes registration, login, per-user record ownership, and Stage 9 Redis-backed endpoint rate limits. It does not yet include email verification, password reset, refresh tokens, token revocation/logout, or account deletion. JWT access tokens remain valid until expiry if stolen.
-
-## API
-
-- `GET /health` — health check
-- `GET /api/v1/tasks` — public task catalogue
-- `POST /api/v1/auth/register` — create account
-- `POST /api/v1/auth/login` — obtain bearer token
-- `GET /api/v1/auth/me` — current account (authenticated)
-- `POST /api/v1/evaluations` — submit evaluation (authenticated)
-- `GET /api/v1/evaluations` — own evaluation history (authenticated)
-- `GET /api/v1/evaluations/{id}` — own evaluation detail (authenticated)
-- Runner's `POST /internal/execute` — private, token-protected internal endpoint
-
-## Development checks
+Install the project and development dependencies in a virtual environment:
 
 ```bash
 python -m pip install -e ".[dev,runner]"
-alembic upgrade head
-pytest
-ruff check .
 ```
 
-## API hardening and observability (Stage 9)
+Run migrations and checks:
 
-Stage 9 adds Redis-backed request limits, health probes, request IDs, structured request logs, security response headers, and Prometheus metrics.
+```bash
+alembic upgrade head
+python -m pytest
+python -m ruff check .
+```
 
-Docker Compose starts Redis for ephemeral rate-limit counters. Initial limits are 5 registrations per hour per client IP, 10 login attempts per minute per client IP, 30 evaluation submissions per hour per user, and 5 AI-review requests per hour per user. Rate-limited endpoints fail closed with HTTP 503 if Redis is unavailable. Redis is not a system of record; PostgreSQL remains authoritative for evaluation and review data.
+GitHub Actions runs the project's automated quality checks.
 
-- `GET /health/live` — process liveness without dependency checks.
-- `GET /health/ready` — readiness check for PostgreSQL and Redis.
-- `GET /metrics` — Prometheus metrics; disabled with 404 unless `METRICS_TOKEN` is configured, then requires a bearer token.
-- Every HTTP response includes an `X-Request-ID`; structured logs include route template, status and duration, but never request bodies, source code, headers, query strings or client IP addresses.
+## Project status
 
-See [docs/stage-9-plan.md](docs/stage-9-plan.md) for details and limits.
-
-## Roadmap
-
-- [x] API skeleton, schemas, syntax checks, and initial CI
-- [x] Separate runner service and disposable restricted execution containers
-- [x] Execute registered trusted test cases in the isolated runner and derive scores server-side
-- [x] Persistent evaluation history (PostgreSQL in Compose; SQLite for local development)
-- [x] Authentication, bearer tokens, and per-user evaluation ownership
-- [x] Separate candidate execution from trusted grading data (Stage 6)
-- [x] Database-backed task management, administrator controls, and immutable trusted test-suite versions (Stage 7; see `docs/stage-7-plan.md`)
-- [x] Optional AI-generated review with evidence-linked findings (Stage 8 — local Ollama default and optional OpenAI provider)
-- [x] API rate limiting, health probes, request IDs, structured logs, and Prometheus metrics (Stage 9; see `docs/stage-9-plan.md`)
-- [ ] Reviewer dashboard
-- [ ] Stronger execution isolation and independent security review
+**v1.0.0 — released.** The core evaluation, reviewer, and AI-assisted review workflows are implemented. Further security and operational improvements are future work; see the repository issues and release history for current planning.
 
 ## License
 
-MIT
+This project is licensed under the MIT License. See [LICENSE](LICENSE).
