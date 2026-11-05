@@ -154,3 +154,7 @@ def test_request_id_and_security_headers_are_returned(caplog):
 
     events = [json.loads(record.getMessage()) for record in caplog.records if record.name == "app.request"]
     assert any(event["event"] == "http_request" and event["route"] == "/health/live" for event in events)
+
+
+def test_structured_request_logger_is_enabled_at_info_level():
+    assert logging.getLogger("app.request").getEffectiveLevel() <= logging.INFO
