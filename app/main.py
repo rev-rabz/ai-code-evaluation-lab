@@ -3,7 +3,10 @@ import os
 
 import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
-from fastapi.responses import Response
+from pathlib import Path
+
+from fastapi.responses import FileResponse, Response
+from fastapi.staticfiles import StaticFiles
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import ValidationError
 from redis.exceptions import RedisError
@@ -31,6 +34,9 @@ app = FastAPI(
     version="0.6.0",
 )
 install_observability(app)
+
+STATIC_DIR = Path(__file__).resolve().parent / "static"
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 EXECUTION_OUTPUT_LIMIT_BYTES = 16_384
 RUNNER_REQUEST_TIMEOUT_SECONDS = 40.0
@@ -61,6 +67,11 @@ def _persist_evaluation(
     )
     db.add(record)
     db.commit()
+
+
+@app.get("/reviewer", include_in_schema=False)
+def reviewer_dashboard() -> FileResponse:
+    return FileResponse(STATIC_DIR / "reviewer.html")
 
 
 @app.get("/health", tags=["system"])
