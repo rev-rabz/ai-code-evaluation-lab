@@ -21,7 +21,8 @@
 
   function showMessage(element, message, isError = true) {
     element.textContent = message || "";
-    element.style.color = isError ? "var(--danger)" : "var(--teal-dark)";
+    element.classList.toggle("success", !isError);
+    element.classList.toggle("error", isError);
   }
 
   function formatDate(value) {
@@ -244,7 +245,7 @@
       byId("scoreBadge").textContent = `${Number(detail.score).toFixed(0)}%`;
       byId("detailStatus").textContent = detail.status;
       byId("detailTests").textContent = `${detail.passed_tests}/${detail.total_tests}`;
-      byId("detailRuntime").textContent = detail.execution_performed ? (detail.execution_timed_out ? "Timed out" : "Executed") : "Not run";
+      byId("detailRuntime").textContent = detail.execution_timed_out ? "Timed out" : (detail.execution_performed ? (detail.execution_duration_ms == null ? "Executed" : `${Number(detail.execution_duration_ms).toFixed(0)} ms`) : "Not run");
       byId("languageLabel").textContent = detail.language;
       byId("sourceCode").textContent = detail.source_code || "";
       renderTestResults(detail.result?.test_feedback || []);
