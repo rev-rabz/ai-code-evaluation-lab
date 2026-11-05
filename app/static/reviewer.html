@@ -53,9 +53,9 @@
 
       <div class="summary-grid">
         <article class="summary-card"><span class="summary-label">Visible submissions</span><strong id="totalCount">0</strong><small>Matching current filters</small></article>
-        <article class="summary-card"><span class="summary-label">Awaiting decision</span><strong id="pendingCount">0</strong><small>Not yet reviewed</small></article>
-        <article class="summary-card"><span class="summary-label">Approved</span><strong id="approvedCount">0</strong><small>Human review complete</small></article>
-        <article class="summary-card"><span class="summary-label">Needs attention</span><strong id="attentionCount">0</strong><small>Changes requested or flagged</small></article>
+        <article class="summary-card"><span class="summary-label">Awaiting decision</span><strong id="pendingCount">0</strong><small>Current page</small></article>
+        <article class="summary-card"><span class="summary-label">Approved</span><strong id="approvedCount">0</strong><small>Current page</small></article>
+        <article class="summary-card"><span class="summary-label">Needs attention</span><strong id="attentionCount">0</strong><small>Current page</small></article>
       </div>
 
       <div class="workspace">
@@ -70,9 +70,8 @@
               <label class="sr-only" for="statusFilter">Evaluation status</label>
               <select id="statusFilter">
                 <option value="">All statuses</option>
-                <option value="completed">Completed</option>
-                <option value="failed">Failed</option>
-                <option value="invalid">Invalid</option>
+                <option value="valid">Valid syntax</option>
+                <option value="invalid">Invalid syntax</option>
               </select>
               <label class="sr-only" for="decisionFilter">Human review decision</label>
               <select id="decisionFilter">
