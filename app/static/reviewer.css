@@ -156,3 +156,6 @@ textarea { resize: vertical; line-height: 1.5; }
   .assignment-form { grid-template-columns: 1fr; }
   .form-bottom { align-items: stretch; flex-direction: column; }
 }
+
+.form-message.success, .dashboard-message.success { color: var(--teal-dark); }
+.form-message.error, .dashboard-message.error { color: var(--danger); }
