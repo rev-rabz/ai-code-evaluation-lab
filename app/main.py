@@ -71,7 +71,10 @@ def _persist_evaluation(
 
 @app.get("/reviewer", include_in_schema=False)
 def reviewer_dashboard() -> FileResponse:
-    return FileResponse(STATIC_DIR / "reviewer.html")
+    response = FileResponse(STATIC_DIR / "reviewer.html")
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+    return response
 
 
 @app.get("/health", tags=["system"])
