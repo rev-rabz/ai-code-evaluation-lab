@@ -70,6 +70,7 @@ def upgrade() -> None:
             sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
             sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
             sa.UniqueConstraint("evaluation_id", name="uq_evaluation_reviews_evaluation_id"),
+            sa.CheckConstraint("decision IN ('approved', 'needs_changes', 'flagged')", name="ck_evaluation_reviews_decision"),
         )
         op.create_index("ix_evaluation_reviews_reviewer_id", "evaluation_reviews", ["reviewer_id"])
 
