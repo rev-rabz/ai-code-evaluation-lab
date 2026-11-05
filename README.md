@@ -18,6 +18,7 @@ A Python/FastAPI platform for inspecting code submissions, running trusted tests
 - Per-run timeout, memory, CPU, process, file-size, and output limits
 - Pytest and Ruff checks in GitHub Actions
 - Optional AI-generated code reviews with source-line evidence and user-scoped persistence
+- Internal reviewer dashboard with assignment-scoped access and human review decisions
 
 ## Stack
 
@@ -220,6 +221,41 @@ OpenAI remains available as an optional alternative. Set `AI_REVIEW_PROVIDER=ope
 - Review output is advisory and never changes trusted scores or test outcomes.
 
 See [docs/stage-8-plan.md](docs/stage-8-plan.md) for scope and trust boundaries.
+
+## Reviewer dashboard (Stage 10)
+
+The first-party reviewer workspace is available at **`/reviewer`** after the API starts. It provides a submission queue, source and trusted-result inspection, static-analysis findings, saved AI-review context, reviewer assignment, and a human decision form. The page and its assets are served by the API; all private data and mutation endpoints require a bearer token.
+
+### Roles and access
+
+- Ordinary users can access only their own evaluation history and AI reviews.
+- Designated reviewers can list and inspect only evaluations currently assigned to them, and can save a human review for those assignments.
+- Administrators can inspect all evaluations, list eligible reviewers, assign/reassign/unassign evaluations, and submit a human review for any evaluation.
+- Reviewer status is separate from administrator status. New accounts and existing accounts are not promoted automatically.
+
+Grant reviewer access to an existing account from the API container:
+
+```bash
+docker compose exec api python -m app.promote_reviewer reviewer@example.com
+```
+
+Revoke reviewer access:
+
+```bash
+docker compose exec api python -m app.promote_reviewer --revoke reviewer@example.com
+```
+
+The reviewer page keeps its access token in memory only; refreshing the page requires signing in again. Source code, notes, and AI-review text are rendered as text rather than injected HTML. The reviewer page uses a restrictive same-origin content security policy.
+
+### Reviewer API
+
+- `GET /api/v1/admin/reviewers` — list accounts eligible for assignments (administrator only)
+- `PUT /api/v1/admin/evaluations/{id}/assignment` — assign, reassign, or unassign an evaluation (administrator only; send `{"reviewer_id": 3}` or `{"reviewer_id": null}`)
+- `GET /api/v1/reviewer/evaluations` — paginated queue; administrators see all, reviewers see only their assignments
+- `GET /api/v1/reviewer/evaluations/{id}` — authorized submission detail, execution results, and AI/human review context
+- `PUT /api/v1/reviewer/evaluations/{id}/review` — save a human decision (`approved`, `needs_changes`, or `flagged`) and optional notes up to 4,000 characters
+
+The human review is independent from the AI review and never changes trusted scores or test outcomes. One current human review is stored per evaluation; updating it replaces the current decision and attribution. Existing evaluations start unassigned and remain visible to administrators until assigned.
 
 ## Evaluation history
 

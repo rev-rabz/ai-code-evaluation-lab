@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Reviewer workspace · EvalLab</title>
+  <link rel="stylesheet" href="/static/reviewer.css">
+  <script src="/static/reviewer.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/reviewer" aria-label="EvalLab reviewer workspace">
+      <span class="brand-mark">EL</span>
+      <span>EvalLab <small>REVIEW WORKSPACE</small></span>
+    </a>
+    <div class="topbar-right">
+      <span id="accountLabel" class="account-label" hidden></span>
+      <button id="logoutButton" class="button button-quiet" type="button" hidden>Sign out</button>
+    </div>
+  </header>
+
+  <main class="page-wrap">
+    <section id="loginView" class="login-layout">
+      <div class="intro">
+        <p class="eyebrow">INTERNAL REVIEW PORTAL</p>
+        <h1>Review code with<br><span>clarity and confidence.</span></h1>
+        <p class="intro-copy">Inspect submitted solutions, verify execution results, and record a consistent human review.</p>
+        <div class="intro-foot"><span class="secure-dot"></span> Protected reviewer access</div>
+      </div>
+      <form id="loginForm" class="login-card">
+        <div class="card-kicker">WELCOME BACK</div>
+        <h2>Sign in to EvalLab</h2>
+        <p class="muted">Use your registered reviewer or administrator account.</p>
+        <label for="emailInput">Email address</label>
+        <input id="emailInput" name="email" type="email" autocomplete="username" placeholder="you@example.com" required>
+        <label for="passwordInput">Password</label>
+        <input id="passwordInput" name="password" type="password" autocomplete="current-password" placeholder="Your password" required>
+        <button class="button button-primary full-width" type="submit">Sign in <span aria-hidden="true">→</span></button>
+        <p id="loginMessage" class="form-message" role="status"></p>
+      </form>
+    </section>
+
+    <section id="dashboardView" hidden>
+      <div class="page-heading">
+        <div>
+          <p class="eyebrow">REVIEW OPERATIONS</p>
+          <h1>Submission queue</h1>
+          <p class="muted">Triage assigned work, inspect evidence, and record a human decision.</p>
+        </div>
+        <button id="refreshButton" class="button button-secondary" type="button">↻ Refresh queue</button>
+      </div>
+
+      <div class="summary-grid">
+        <article class="summary-card"><span class="summary-label">Visible submissions</span><strong id="totalCount">0</strong><small>Matching current filters</small></article>
+        <article class="summary-card"><span class="summary-label">Awaiting decision</span><strong id="pendingCount">0</strong><small>Current page</small></article>
+        <article class="summary-card"><span class="summary-label">Approved</span><strong id="approvedCount">0</strong><small>Current page</small></article>
+        <article class="summary-card"><span class="summary-label">Needs attention</span><strong id="attentionCount">0</strong><small>Current page</small></article>
+      </div>
+
+      <div class="workspace">
+        <section class="queue-panel" aria-label="Submission queue">
+          <div class="panel-heading">
+            <div><h2>Queue</h2><span id="queueSubtitle" class="muted small">Loading submissions…</span></div>
+          </div>
+          <form id="filterForm" class="filter-form">
+            <label class="sr-only" for="taskFilter">Task ID</label>
+            <input id="taskFilter" type="search" placeholder="Filter by task ID">
+            <div class="filter-row">
+              <label class="sr-only" for="statusFilter">Evaluation status</label>
+              <select id="statusFilter">
+                <option value="">All statuses</option>
+                <option value="valid">Valid syntax</option>
+                <option value="invalid">Invalid syntax</option>
+              </select>
+              <label class="sr-only" for="decisionFilter">Human review decision</label>
+              <select id="decisionFilter">
+                <option value="">All decisions</option>
+                <option value="pending">Pending</option>
+                <option value="approved">Approved</option>
+                <option value="needs_changes">Needs changes</option>
+                <option value="flagged">Flagged</option>
+              </select>
+            </div>
+            <button class="button button-secondary full-width" type="submit">Apply filters</button>
+          </form>
+          <div id="queueList" class="queue-list" aria-live="polite"></div>
+          <div class="queue-footer"><span id="queueRange" class="muted small"></span><div><button id="previousPage" class="button button-quiet button-small" type="button" disabled>Previous</button><button id="nextPage" class="button button-quiet button-small" type="button" disabled>Next</button></div></div>
+        </section>
+
+        <section class="detail-panel" aria-label="Evaluation details">
+          <div id="emptyDetail" class="empty-detail">
+            <div class="empty-icon">⌁</div>
+            <h2>Select a submission</h2>
+            <p class="muted">Choose an item from the queue to inspect its source, results, and review history.</p>
+          </div>
+          <div id="detailContent" hidden>
+            <div class="detail-heading">
+              <div><p class="eyebrow">SUBMISSION <span id="detailId"></span></p><h2 id="detailTitle">Evaluation detail</h2><p id="detailMeta" class="muted"></p></div>
+              <span id="scoreBadge" class="score-badge">—</span>
+            </div>
+            <div class="detail-stats">
+              <div><span>Evaluation</span><strong id="detailStatus">—</strong></div>
+              <div><span>Tests passed</span><strong id="detailTests">—</strong></div>
+              <div><span>Runtime</span><strong id="detailRuntime">—</strong></div>
+            </div>
+
+            <section class="detail-section">
+              <div class="section-title"><h3>Submitted source</h3><span id="languageLabel" class="tag">Python</span></div>
+              <pre class="code-block"><code id="sourceCode"></code></pre>
+            </section>
+
+            <section class="detail-section">
+              <h3>Trusted test results</h3>
+              <div id="testResults" class="result-list"></div>
+            </section>
+
+            <section class="detail-section">
+              <h3>Static analysis</h3>
+              <div id="staticFindings" class="finding-list"></div>
+            </section>
+
+            <section class="detail-section">
+              <div class="section-title"><h3>AI review</h3><span id="aiModel" class="muted small"></span></div>
+              <div id="aiReviewContent" class="ai-review-content"><p class="muted">No AI review attached to this submission.</p></div>
+            </section>
+
+            <section id="assignmentSection" class="detail-section admin-section" hidden>
+              <div class="section-title"><h3>Reviewer assignment</h3><span class="tag tag-admin">ADMIN</span></div>
+              <div class="assignment-form">
+                <label class="sr-only" for="reviewerSelect">Assign reviewer</label>
+                <select id="reviewerSelect"><option value="">Unassigned</option></select>
+                <button id="saveAssignmentButton" class="button button-secondary" type="button">Save assignment</button>
+              </div>
+              <p id="assignmentMessage" class="muted small"></p>
+            </section>
+
+            <section class="detail-section review-section">
+              <div class="section-title"><h3>Human review</h3><span id="humanReviewState" class="tag">NOT REVIEWED</span></div>
+              <form id="reviewForm">
+                <label for="decisionSelect">Decision</label>
+                <select id="decisionSelect" required>
+                  <option value="approved">Approved</option>
+                  <option value="needs_changes">Needs changes</option>
+                  <option value="flagged">Flagged for follow-up</option>
+                </select>
+                <label for="reviewNotes">Reviewer notes <span class="muted">(optional · 4,000 characters max)</span></label>
+                <textarea id="reviewNotes" rows="4" maxlength="4000" placeholder="Explain the decision and any suggested next steps…"></textarea>
+                <div class="form-bottom"><span id="reviewMessage" class="form-message" role="status"></span><button class="button button-primary" type="submit">Save human review</button></div>
+              </form>
+            </section>
+          </div>
+        </section>
+      </div>
+      <p id="dashboardMessage" class="dashboard-message" role="status"></p>
+    </section>
+  </main>
+  <footer class="footer">EvalLab <span>·</span> Reviewer workspace</footer>
+</body>
+</html>
